@@ -311,7 +311,12 @@ def parent_dashboard(request):
             cursor.execute("""
                 SELECT s.name, d.risk_score, d.risk_level, d.confidence_score, d.contributing_factors
                 FROM students s
-                JOIN dropout_risk d ON s.student_id = d.student_id
+                JOIN (
+                    SELECT student_id, MAX(prediction_date) AS latest_date
+                    FROM dropout_risk
+                    GROUP BY student_id
+                ) latest_risk ON s.student_id = latest_risk.student_id
+                JOIN dropout_risk d ON s.student_id = d.student_id AND d.prediction_date = latest_risk.latest_date
                 WHERE s.parent_id = %s
             """, [parent_id])
             child_dropout_risks = cursor.fetchall()
@@ -501,7 +506,7 @@ def calculate_dropout_risk_for_parent(parent_id):
             cursor.execute("""
                 SELECT student_id
                 FROM students
-                WHERE parent_id = %s
+                WHERE parent_id = %s 
             """, [parent_id])
             children = cursor.fetchall()
 
