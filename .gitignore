@@ -29,3 +29,6 @@ yarn.lock
 # Ignore macOS & Windows system files
 .DS_Store
 Thumbs.db
+
+# Environment variables
+.env

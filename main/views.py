@@ -11,6 +11,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 import requests
 import json
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 def index(request):
     if request.session.get('role') == 'student':
@@ -134,7 +139,7 @@ def fetch_courses_from_api(course_name, page_token=None):
     next_page_token = None
 
     # Fetch videos from YouTube API
-    api_key = "AIzaSyBR4G_KGvnHWmUrCP-DeVze23P3eopApHA"
+    api_key = os.getenv("YOUTUBE_API_KEY")
     youtube_search_url = "https://www.googleapis.com/youtube/v3/search"
 
     try:
