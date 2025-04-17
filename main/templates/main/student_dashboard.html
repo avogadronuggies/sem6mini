@@ -240,34 +240,87 @@
       <p>No dropout risk data available.</p>
       {% endif %}
 
-      <h2>Recommended Courses</h2>
+      <h2>Recommended Courses and Videos</h2>
       {% if course_recommendations %}
-      <table class="table table-bordered">
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Course Title</th>
-            <th>Platform</th>
-            <th>Difficulty Level</th>
-            <th>Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for course in course_recommendations %}
-          <tr>
-            <td>{{ course.subject_name }}</td>
-            <td>{{ course.course_title }}</td>
-            <td>{{ course.platform }}</td>
-            <td>{{ course.difficulty_level }}</td>
-            <td>
-              <a href="{{ course.course_url }}" target="_blank">View Course</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table class="table table-striped table-hover">
+          <thead class="table-dark">
+            <tr>
+              <th>Course Name</th>
+              <th>Title</th>
+              <th>Platform</th>
+              <th>Description</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody id="course-recommendations-body">
+            {% for course in course_recommendations %}
+            <tr>
+              <td>{{ course.course_name }}</td>
+              <td>{{ course.course_title }}</td>
+              <td>{{ course.platform }}</td>
+              <td>{{ course.description }}</td>
+              <td>
+                <a
+                  href="{{ course.course_url }}"
+                  target="_blank"
+                  class="btn btn-primary"
+                  >View</a
+                >
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button id="load-more-btn" class="btn btn-secondary">Load More</button>
+      <script>
+        document
+          .getElementById("load-more-btn")
+          .addEventListener("click", function () {
+            const courseName = "{{ weak_courses|first }}"; // Replace with the actual course name dynamically if needed
+            const pageToken = this.getAttribute("data-page-token") || null;
+
+            fetch(
+              `/load_more_courses?course_name=${courseName}&page_token=${pageToken}`
+            )
+              .then((response) => response.json())
+              .then((data) => {
+                if (data.courses) {
+                  const tbody = document.getElementById(
+                    "course-recommendations-body"
+                  );
+                  data.courses.forEach((course) => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                    <td>${course.course_name || ""}</td>
+                    <td>${course.course_title || ""}</td>
+                    <td>${course.platform || ""}</td>
+                    <td>${course.description || ""}</td>
+                    <td><a href="${
+                      course.course_url
+                    }" target="_blank" class="btn btn-primary">View</a></td>
+                  `;
+                    tbody.appendChild(row);
+                  });
+                }
+
+                if (data.next_page_token) {
+                  document
+                    .getElementById("load-more-btn")
+                    .setAttribute("data-page-token", data.next_page_token);
+                } else {
+                  document.getElementById("load-more-btn").style.display =
+                    "none";
+                }
+              })
+              .catch((error) =>
+                console.error("Error loading more courses:", error)
+              );
+          });
+      </script>
       {% else %}
-      <p>No course recommendations available.</p>
+      <p>No recommendations available at the moment.</p>
       {% endif %}
     </div>
 
