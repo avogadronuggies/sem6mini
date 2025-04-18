@@ -278,13 +278,27 @@
         document
           .getElementById("load-more-btn")
           .addEventListener("click", function () {
-            const courseName = "{{ weak_courses|first }}"; // Replace with the actual course name dynamically if needed
+            const courseName = "{{ weak_courses|first }}"; // Dynamically fetch the first weak course name
             const pageToken = this.getAttribute("data-page-token") || null;
 
+            if (!courseName) {
+              console.error(
+                "Course name is missing. Cannot load more courses."
+              );
+              return;
+            }
+
             fetch(
-              `/load_more_courses?course_name=${courseName}&page_token=${pageToken}`
+              `/load_more_courses?course_name=${encodeURIComponent(
+                courseName
+              )}&page_token=${pageToken}`
             )
-              .then((response) => response.json())
+              .then((response) => {
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+              })
               .then((data) => {
                 if (data.courses) {
                   const tbody = document.getElementById(

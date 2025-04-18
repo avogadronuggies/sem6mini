@@ -134,11 +134,11 @@ def logout(request):
     return redirect('login')
 
 def fetch_courses_from_api(course_name, page_token=None):
-    """Fetch videos from YouTube API and courses from Coursera API for a given course with pagination."""
+    """Fetch playlists from YouTube API and courses from Coursera API for a given course with pagination."""
     courses = []
     next_page_token = None
 
-    # Fetch videos from YouTube API
+    # Fetch playlists from YouTube API
     api_key = os.getenv("YOUTUBE_API_KEY")
     youtube_search_url = "https://www.googleapis.com/youtube/v3/search"
 
@@ -146,7 +146,7 @@ def fetch_courses_from_api(course_name, page_token=None):
         params = {
             "part": "snippet",
             "q": course_name,
-            "type": "video",
+            "type": "playlist",
             "maxResults": 4,  # Limit to 4 results per page
             "key": api_key
         }
@@ -155,18 +155,18 @@ def fetch_courses_from_api(course_name, page_token=None):
 
         response = requests.get(youtube_search_url, params=params)
         if response.status_code == 200:
-            videos = response.json().get("items", [])
-            for video in videos:
+            playlists = response.json().get("items", [])
+            for playlist in playlists:
                 courses.append({
                     'platform': 'YouTube',
-                    'course_title': video['snippet']['title'],
-                    'course_url': f"https://www.youtube.com/watch?v={video['id']['videoId']}",
-                    'description': video['snippet']['description'],
+                    'course_title': playlist['snippet']['title'],
+                    'course_url': f"https://www.youtube.com/playlist?list={playlist['id']['playlistId']}",
+                    'description': playlist['snippet']['description'],
                     'difficulty_level': 'N/A',
                 })
             next_page_token = response.json().get("nextPageToken")
     except Exception as e:
-        print(f"Error fetching videos from YouTube: {e}")
+        print(f"Error fetching playlists from YouTube: {e}")
 
     # Fetch courses from Coursera API
     coursera_search_url = "https://api.coursera.org/api/courses.v1"
