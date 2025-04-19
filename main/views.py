@@ -56,10 +56,11 @@ def login(request):
                     """, [email])
                 elif role == 'teacher':
                     cursor.execute("""
-                        SELECT teacher_id, name, department, phone, email, date_of_joining, password
-                        FROM teachers
-                        WHERE email = %s
-                    """, [email])
+    SELECT t.teacher_id, t.name, d.department_name, t.phone, t.email, t.date_of_joining, t.password
+    FROM teachers t
+    JOIN departments d ON t.department_id = d.department_id
+    WHERE t.email = %s
+""", [email])
                 elif role == 'parent':
                     cursor.execute("""
                         SELECT parent_id, name, phone, email, occupation, address, relation_to_student, password
@@ -320,28 +321,33 @@ def student_dashboard(request):
 
             # Fetch academic records
             cursor.execute("""
-                SELECT semester_id, department, course_name, marks
-                FROM academic_records
-                WHERE student_id = %s
-            """, [student_id])
+    SELECT ar.semester_id, d.department_name, c.course_name, ar.marks
+    FROM academic_records ar
+    JOIN courses c ON ar.course_id = c.course_id
+    JOIN departments d ON c.department_id = d.department_id
+    WHERE ar.student_id = %s
+""", [student_id])
             student_data['academic_records'] = cursor.fetchall()
             print(f"Academic records: {student_data['academic_records']}")  # Debugging log
 
             # Fetch attendance records
             cursor.execute("""
-                SELECT semester_id, department, course_name, attendance
-                FROM attendance_records
-                WHERE student_id = %s
-            """, [student_id])
+    SELECT ar.semester_id, d.department_name, c.course_name, ar.attendance
+    FROM attendance_records ar
+    JOIN courses c ON ar.course_id = c.course_id
+    JOIN departments d ON c.department_id = d.department_id
+    WHERE ar.student_id = %s
+""", [student_id])
             student_data['attendance_records'] = cursor.fetchall()
             print(f"Attendance records: {student_data['attendance_records']}")  # Debugging log
 
             # Fetch feedback
             cursor.execute("""
-                SELECT course_name, feedback_text, sentiment_score
-                FROM student_feedback
-                WHERE student_id = %s
-            """, [student_id])
+    SELECT c.course_name, sf.feedback_text, sf.sentiment_score
+    FROM student_feedback sf
+    JOIN courses c ON sf.course_id = c.course_id
+    WHERE sf.student_id = %s
+""", [student_id])
             student_data['feedback'] = cursor.fetchall()
             print(f"Feedback: {student_data['feedback']}")  # Debugging log
 
@@ -526,9 +532,9 @@ def calculate_dropout_risk_for_student(student_id):
         with connection.cursor() as cursor:
             # Fetch student data and subjects with marks less than 35
             cursor.execute("""
-                SELECT s.subject_name, ar.marks
+                SELECT c.course_name, ar.marks
                 FROM academic_records ar
-                JOIN subjects s ON ar.subject_id = s.subject_id
+                JOIN courses c ON ar.course_id = c.course_id
                 WHERE ar.student_id = %s AND ar.marks < 35
             """, [student_id])
             failed_subjects = cursor.fetchall()
@@ -576,9 +582,9 @@ def recommend_courses_for_subject(student_id, course_name):
                     print(f"Attempting to insert recommendation for course: {course['course_title']} into student_course_recommendations")  # Debugging log
                     # Insert the recommended course into the database
                     cursor.execute("""
-                        INSERT INTO student_course_recommendations (student_id, weak_subject_id, course_id, recommendation_date)
-                        SELECT %s, NULL, oc.course_id, NOW()
-                        FROM online_courses oc
+                        INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+    SELECT %s, NULL, oc.online_course_id, NOW()
+    FROM online_courses oc
                         WHERE CONVERT(oc.platform USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(%s USING utf8mb4) COLLATE utf8mb4_general_ci
                           AND CONVERT(oc.course_title USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(%s USING utf8mb4) COLLATE utf8mb4_general_ci
                         ON DUPLICATE KEY UPDATE recommendation_date = NOW()
