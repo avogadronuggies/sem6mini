@@ -14,6 +14,8 @@
       rel="stylesheet"
     />
     <link href="{% static 'css/student_dashboard.css' %}" rel="stylesheet" />
+    <!-- Add Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <style>
       :root {
         --primary: #3674b5;
@@ -91,6 +93,28 @@
         border-radius: 5px;
         border: 1px solid var(--secondary);
       }
+      
+      .chart-container {
+        position: relative;
+        height: 300px;
+        width: 100%;
+        margin-bottom: 30px;
+        background-color: white;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow);
+        padding: 15px;
+      }
+      
+      .data-tables {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+      
+      .data-table {
+        flex: 1;
+        min-width: 300px;
+      }
     </style>
   </head>
   <body>
@@ -112,6 +136,7 @@
         <div class="collapse navbar-collapse" id="navbarNav">
           <ul class="navbar-nav ms-auto">
             <li class="nav-item dropdown">
+              <!-- Fixed missing opening <a> tag -->
               <a
                 class="nav-link dropdown-toggle"
                 href="#"
@@ -166,6 +191,7 @@
           </a>
         </li>
         <li class="nav-item">
+          <!-- Fixed missing opening <a> tag -->
           <a
             class="nav-link"
             href="https://drive.google.com/drive/folders/1WOkKL0UJxmEw_mggnPzT0ixKQwagoB3w"
@@ -198,39 +224,71 @@
         </select>
       </div>
 
-      <h2>Academic Records</h2>
-      <div id="academic-records-container">
-        <p>Select a semester to view academic records.</p>
+      <h2>Academic & Attendance Records</h2>
+      
+      <!-- Chart containers -->
+      <div class="row">
+        <div class="col-md-6">
+          <div class="chart-container">
+            <canvas id="academic-chart"></canvas>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="chart-container">
+            <canvas id="attendance-chart"></canvas>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Data tables -->
+      <div class="data-tables">
+        <div class="data-table">
+          <h3>Academic Records</h3>
+          <div id="academic-records-container">
+            <p>Select a semester to view academic records.</p>
+          </div>
+        </div>
+        
+        <div class="data-table">
+          <h3>Attendance Records</h3>
+          <div id="attendance-records-container">
+            <p>Select a semester to view attendance records.</p>
+          </div>
+        </div>
       </div>
 
-      <h2>Attendance Records</h2>
-      <div id="attendance-records-container">
-        <p>Select a semester to view attendance records.</p>
+      <h2 id="course-feedback">Course Feedback</h2>
+      <div id="feedback-container">
+        <div class="card mb-4">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Submit Feedback</h5>
+          </div>
+          <div class="card-body">
+            <form id="feedback-form">
+              <div class="mb-3">
+                <label for="course-select" class="form-label">Select Course:</label>
+                <select id="course-select" class="form-select" required>
+                  <option value="">-- Select a course --</option>
+                  <!-- Courses will be loaded dynamically -->
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="feedback-text" class="form-label">Your Feedback:</label>
+                <textarea id="feedback-text" class="form-control" rows="4" required 
+                  placeholder="Share your experience with this course..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary">Submit Feedback</button>
+            </form>
+          </div>
+        </div>
+        
+        <div class="mt-4">
+          <h5>Your Previous Feedback</h5>
+          <div id="existing-feedback-container">
+            <p>Select a semester to view your previous feedback.</p>
+          </div>
+        </div>
       </div>
-
-      <h2>Feedback</h2>
-      {% if student_data.feedback %}
-      <table class="table table-bordered">
-        <thead>
-          <tr>
-            <th>Course Name</th>
-            <th>Feedback</th>
-            <th>Sentiment Score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for feedback in student_data.feedback %}
-          <tr>
-            <td>{{ feedback.0 }}</td>
-            <td>{{ feedback.1 }}</td>
-            <td>{{ feedback.2 }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p>No feedback available.</p>
-      {% endif %}
 
       <h2>Dropout Risk</h2>
       {% if dropout_risk %}
@@ -315,7 +373,7 @@
       {% else %}
       <p>No recommended videos available at the moment.</p>
       {% endif %}
-
+      
       <h2>Self-Evaluation Tests</h2>
       <div id="self-evaluation-tests-container">
         <p>Loading self-evaluation tests...</p>
@@ -330,6 +388,152 @@
     </div>
 
     <script>
+      // Global variables for charts
+      let academicChart = null;
+      let attendanceChart = null;
+      
+      // Function to generate a color palette
+      function generateColors(count) {
+        const baseColors = [
+          'rgb(54, 162, 235)', // blue
+          'rgb(255, 99, 132)', // red
+          'rgb(75, 192, 192)', // green
+          'rgb(255, 159, 64)', // orange
+          'rgb(153, 102, 255)', // purple
+          'rgb(255, 205, 86)', // yellow
+          'rgb(201, 203, 207)', // grey
+        ];
+        
+        let colors = [];
+        for (let i = 0; i < count; i++) {
+          colors.push(baseColors[i % baseColors.length]);
+        }
+        return colors;
+      }
+      
+      // Create or update the academic chart
+      function updateAcademicChart(courseNames, marks) {
+        const ctx = document.getElementById('academic-chart').getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (academicChart) {
+          academicChart.destroy();
+        }
+        
+        // Create background colors
+        const backgroundColors = generateColors(courseNames.length);
+        
+        // Create new chart
+        academicChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: courseNames,
+            datasets: [{
+              label: 'Academic Performance (Marks)',
+              data: marks,
+              backgroundColor: backgroundColors,
+              borderColor: backgroundColors,
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: {
+                display: true,
+                text: 'Academic Performance by Course',
+                font: {
+                  size: 16
+                }
+              },
+              legend: {
+                display: false
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                title: {
+                  display: true,
+                  text: 'Marks'
+                }
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: 'Courses'
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Create or update the attendance chart
+      function updateAttendanceChart(courseNames, attendances) {
+        const ctx = document.getElementById('attendance-chart').getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (attendanceChart) {
+          attendanceChart.destroy();
+        }
+        
+        // Create background colors with transparency for attendance chart
+        const backgroundColors = generateColors(courseNames.length).map(color => {
+          return color.replace('rgb', 'rgba').replace(')', ', 0.7)');
+        });
+        
+        // Create new chart
+        attendanceChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: courseNames,
+            datasets: [{
+              label: 'Attendance (%)',
+              data: attendances,
+              backgroundColor: backgroundColors,
+              borderColor: generateColors(courseNames.length),
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              title: {
+                display: true,
+                text: 'Attendance Records by Course',
+                font: {
+                  size: 16
+                }
+              },
+              legend: {
+                display: false
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                title: {
+                  display: true,
+                  text: 'Attendance (%)'
+                }
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: 'Courses'
+                }
+              }
+            }
+          }
+        });
+      }
+
+      // Include fetchSemesterRecords with added chart functionality
       function fetchSemesterRecords(semesterId) {
         fetch(`/fetch_records/?semester_id=${semesterId}`)
           .then((response) => {
@@ -339,7 +543,41 @@
             return response.json();
           })
           .then((data) => {
-            // Update academic records
+            // Process data for charts
+            const academicCourseNames = [];
+            const academicMarks = [];
+            const attendanceCourseNames = [];
+            const attendanceValues = [];
+            
+            // Process academic data for chart
+            if (data.academic_records.length > 0) {
+              data.academic_records.forEach((record) => {
+                academicCourseNames.push(record[1]);
+                academicMarks.push(record[2]);
+              });
+              
+              // Update academic chart
+              updateAcademicChart(academicCourseNames, academicMarks);
+            } else {
+              // Clear academic chart if no data
+              updateAcademicChart([], []);
+            }
+            
+            // Process attendance data for chart
+            if (data.attendance_records.length > 0) {
+              data.attendance_records.forEach((record) => {
+                attendanceCourseNames.push(record[1]);
+                attendanceValues.push(record[2]);
+              });
+              
+              // Update attendance chart
+              updateAttendanceChart(attendanceCourseNames, attendanceValues);
+            } else {
+              // Clear attendance chart if no data
+              updateAttendanceChart([], []);
+            }
+            
+            // Update academic records table
             const academicContainer = document.getElementById(
               "academic-records-container"
             );
@@ -357,8 +595,8 @@
               data.academic_records.forEach((record) => {
                 academicHtml += `
                   <tr>
-                    <td>${record[0]}</td>
                     <td>${record[1]}</td>
+                    <td>${record[2]}</td>
                   </tr>
                 `;
               });
@@ -368,8 +606,8 @@
               academicContainer.innerHTML =
                 "<p>No academic records available for this semester.</p>";
             }
-
-            // Update attendance records
+    
+            // Update attendance records table
             const attendanceContainer = document.getElementById(
               "attendance-records-container"
             );
@@ -387,8 +625,8 @@
               data.attendance_records.forEach((record) => {
                 attendanceHtml += `
                   <tr>
-                    <td>${record[0]}</td>
                     <td>${record[1]}</td>
+                    <td>${record[2]}</td>
                   </tr>
                 `;
               });
@@ -398,12 +636,142 @@
               attendanceContainer.innerHTML =
                 "<p>No attendance records available for this semester.</p>";
             }
+            
+            // Update course select dropdown for feedback
+            const courseSelect = document.getElementById("course-select");
+            // Clear existing options
+            courseSelect.innerHTML = '<option value="">-- Select a course --</option>';
+            
+            // Add courses from the semester
+            if (data.course_list && data.course_list.length > 0) {
+              data.course_list.forEach((course) => {
+                const option = document.createElement('option');
+                option.value = course[0]; // course_id
+                option.textContent = course[1]; // course_name
+                courseSelect.appendChild(option);
+              });
+            }
+            
+            // Update existing feedback
+            const existingFeedbackContainer = document.getElementById("existing-feedback-container");
+            if (data.existing_feedback && Object.keys(data.existing_feedback).length > 0) {
+              let feedbackHtml = `
+                <table class="table table-bordered">
+                  <thead>
+                    <tr>
+                      <th>Course</th>
+                      <th>Feedback</th>
+                      <th>Sentiment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+              `;
+              
+              data.course_list.forEach((course) => {
+                const courseId = course[0];
+                const courseName = course[1];
+                
+                if (data.existing_feedback[courseId]) {
+                  const feedbackText = data.existing_feedback[courseId][0];
+                  const sentimentScore = data.existing_feedback[courseId][1];
+                  
+                  // Determine sentiment class and text
+                  let sentimentClass, sentimentText;
+                  if (sentimentScore > 0.3) {
+                    sentimentClass = "text-success";
+                    sentimentText = "Positive";
+                  } else if (sentimentScore < -0.3) {
+                    sentimentClass = "text-danger";
+                    sentimentText = "Negative";
+                  } else {
+                    sentimentClass = "text-warning";
+                    sentimentText = "Neutral";
+                  }
+                  
+                  feedbackHtml += `
+                    <tr>
+                      <td>${courseName}</td>
+                      <td>${feedbackText}</td>
+                      <td class="${sentimentClass}">${sentimentText} (${sentimentScore.toFixed(2)})</td>
+                    </tr>
+                  `;
+                }
+              });
+              
+              feedbackHtml += "</tbody></table>";
+              existingFeedbackContainer.innerHTML = feedbackHtml;
+            } else {
+              existingFeedbackContainer.innerHTML = "<p>No feedback submitted for courses in this semester.</p>";
+            }
           })
           .catch((error) => {
             console.error("Error fetching records:", error);
           });
       }
-
+    
+      // Add the feedback form submission function
+      document.addEventListener("DOMContentLoaded", function () {
+        const feedbackForm = document.getElementById("feedback-form");
+        
+        feedbackForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          
+          const courseId = document.getElementById("course-select").value;
+          const feedbackText = document.getElementById("feedback-text").value;
+          
+          if (!courseId || !feedbackText) {
+            alert("Please select a course and enter feedback text.");
+            return;
+          }
+          
+          // Create form data for submission
+          const formData = new FormData();
+          formData.append("course_id", courseId);
+          formData.append("feedback_text", feedbackText);
+          
+          // Send the feedback to the server
+          fetch("/submit_feedback/", {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": getCsrfToken(),
+            },
+            body: formData,
+          })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            if (data.success) {
+              alert("Feedback submitted successfully!");
+              document.getElementById("feedback-text").value = ""; // Clear the input
+              
+              // Refresh the current semester data to show the new feedback
+              const currentSemester = document.getElementById("semester-select").value;
+              fetchSemesterRecords(currentSemester);
+            } else {
+              alert("Error: " + data.error);
+            }
+          })
+          .catch((error) => {
+            console.error("Error submitting feedback:", error);
+            alert("An error occurred while submitting feedback. Please try again.");
+          });
+        });
+        
+        // Function to get CSRF token from cookies
+        function getCsrfToken() {
+          const cookieValue = document.cookie
+            .split("; ")
+            .find((row) => row.startsWith("csrftoken="))
+            ?.split("=")[1];
+          return cookieValue;
+        }
+      });
+    
+      // Add the self-evaluation tests functions
       function fetchSelfEvaluationTests() {
         fetch("/fetch_self_evaluation_tests/")
           .then((response) => {
@@ -453,18 +821,19 @@
           })
           .catch((error) => {
             console.error("Error fetching self-evaluation tests:", error);
+            container.innerHTML = "<p>Error loading self-evaluation tests.</p>";
           });
       }
-
+    
       function submitSelfEvaluationTest(testId) {
         const scoreInput = document.getElementById(`score-${testId}`);
         const testScore = scoreInput.value;
-
+    
         if (!testScore) {
           alert("Please enter a score before submitting.");
           return;
         }
-
+    
         fetch("/submit_self_evaluation_test/", {
           method: "POST",
           headers: {
@@ -487,15 +856,28 @@
             console.error("Error submitting self-evaluation test:", error);
           });
       }
-
-      // Fetch records for the current semester on page load
+    
+      // Initialize charts as empty to avoid errors
       document.addEventListener("DOMContentLoaded", function () {
-        const currentSemester = "{{ current_semester }}";
-        document.getElementById("semester-select").value = currentSemester;
-        fetchSemesterRecords(currentSemester);
-        fetchSelfEvaluationTests();
+        // Initialize empty charts
+        updateAcademicChart([], []);
+        updateAttendanceChart([], []);
+        
+        // Fetch records for the current semester
+        const currentSemester = "{{ student_data.details.2 }}";
+        const semesterSelect = document.getElementById("semester-select");
+        if (semesterSelect) {
+          semesterSelect.value = currentSemester;
+          fetchSemesterRecords(currentSemester);
+        }
+        
+        try {
+          fetchSelfEvaluationTests();
+        } catch (error) {
+          console.error("Error initializing self evaluation tests:", error);
+        }
       });
-
+    
       // Fetch records when the semester selector changes
       document
         .getElementById("semester-select")
