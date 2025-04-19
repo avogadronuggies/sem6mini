@@ -362,6 +362,15 @@ def student_dashboard(request):
                 LIMIT 1
             """, [student_id])
             dropout_risk = cursor.fetchone()
+            
+            # Fetch student feedback
+            cursor.execute("""
+                SELECT c.course_name, sf.feedback_text, sf.sentiment_score
+                FROM student_feedback sf
+                JOIN courses c ON sf.course_id = c.course_id
+                WHERE sf.student_id = %s
+            """, [student_id])
+            student_data['feedback'] = cursor.fetchall()
 
             # Fetch weak subjects and recommend courses
             cursor.execute("""
@@ -374,6 +383,19 @@ def student_dashboard(request):
             for subject_name in weak_subjects:
                 api_courses, _ = fetch_courses_from_api(subject_name)
                 course_recommendations.extend(api_courses)
+                
+            # Recalculate dropout risk with updated feedback
+            calculate_dropout_risk_for_student(student_id)
+            
+            # Fetch the updated dropout risk
+            cursor.execute("""
+                SELECT risk_score, risk_level, confidence_score, contributing_factors
+                FROM dropout_risk
+                WHERE student_id = %s
+                ORDER BY prediction_date DESC
+                LIMIT 1
+            """, [student_id])
+            dropout_risk = cursor.fetchone()
 
     except Exception as e:
         print(f"Error fetching student data: {e}")
@@ -400,12 +422,22 @@ def fetch_records(request):
 
     academic_records = []
     attendance_records = []
+    course_list = []
 
     try:
         with connection.cursor() as cursor:
+            # Fetch all courses for the semester first
+            cursor.execute("""
+                SELECT DISTINCT c.course_id, c.course_name
+                FROM courses c
+                JOIN academic_records ar ON c.course_id = ar.course_id
+                WHERE ar.student_id = %s AND ar.semester_id = %s
+            """, [student_id, semester_id])
+            course_list = cursor.fetchall()
+            
             # Fetch academic records
             cursor.execute("""
-                SELECT c.course_name, ar.marks
+                SELECT c.course_id, c.course_name, ar.marks
                 FROM academic_records ar
                 JOIN courses c ON ar.course_id = c.course_id
                 WHERE ar.student_id = %s AND ar.semester_id = %s
@@ -414,12 +446,28 @@ def fetch_records(request):
 
             # Fetch attendance records
             cursor.execute("""
-                SELECT c.course_name, ar.attendance
+                SELECT c.course_id, c.course_name, ar.attendance
                 FROM attendance_records ar
                 JOIN courses c ON ar.course_id = c.course_id
                 WHERE ar.student_id = %s AND ar.semester_id = %s
             """, [student_id, semester_id])
             attendance_records = cursor.fetchall()
+            
+            # Fetch existing feedback for these courses
+            cursor.execute("""
+                SELECT sf.course_id, sf.feedback_text, sf.sentiment_score 
+                FROM student_feedback sf
+                WHERE sf.student_id = %s AND sf.course_id IN (
+                    SELECT DISTINCT c.course_id
+                    FROM courses c
+                    JOIN academic_records ar ON c.course_id = ar.course_id
+                    WHERE ar.student_id = %s AND ar.semester_id = %s
+                )
+            """, [student_id, student_id, semester_id])
+            existing_feedback = cursor.fetchall()
+            
+            # Convert to dictionary for easy lookup
+            feedback_dict = {feedback[0]: (feedback[1], feedback[2]) for feedback in existing_feedback}
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -427,8 +475,9 @@ def fetch_records(request):
     return JsonResponse({
         "academic_records": academic_records,
         "attendance_records": attendance_records,
+        "course_list": course_list,
+        "existing_feedback": feedback_dict
     })
-
 def teacher_dashboard(request):
     if request.session.get('role') != 'teacher':
         return redirect('login')
@@ -576,7 +625,6 @@ def calculate_dropout_risk():
         print(f"Error calculating dropout risk: {e}")
 
 def calculate_dropout_risk_for_student(student_id):
-    """Calculate dropout risk for a specific student and update weak subjects."""
     try:
         with connection.cursor() as cursor:
             # Fetch academic records with marks less than 40
@@ -587,13 +635,43 @@ def calculate_dropout_risk_for_student(student_id):
                 WHERE ar.student_id = %s AND ar.marks < 40
             """, [student_id])
             failed_subjects = cursor.fetchall()
-
-            # Calculate dropout risk based on failed subjects
+            
+            # Fetch feedback sentiment scores
+            cursor.execute("""
+                SELECT AVG(sentiment_score) 
+                FROM student_feedback
+                WHERE student_id = %s
+            """, [student_id])
+            avg_sentiment = cursor.fetchone()[0] or 0
+            
+            # Calculate dropout risk based on failed subjects and sentiment
             risk_score = 0
             risk_level = 'None'
+            contributing_factors = [sub[1] for sub in failed_subjects]
+            
             if failed_subjects:
                 risk_score = 80  # High risk if the student has failed subjects
                 risk_level = 'High'
+            
+            # Adjust risk based on sentiment
+            if avg_sentiment < -0.5:  # Very negative sentiment
+                risk_score += 10
+                contributing_factors.append("Negative course feedback")
+            elif avg_sentiment > 0.5:  # Very positive sentiment
+                risk_score -= 10
+                
+            # Ensure risk score stays within 0-100
+            risk_score = max(0, min(100, risk_score))
+            
+            # Update risk level based on final score
+            if risk_score > 75:
+                risk_level = 'High'
+            elif risk_score > 40:
+                risk_level = 'Medium'
+            elif risk_score > 15:
+                risk_level = 'Low'
+            else:
+                risk_level = 'None'
 
             # Insert or update dropout risk in the database
             cursor.execute("""
@@ -605,7 +683,7 @@ def calculate_dropout_risk_for_student(student_id):
                     confidence_score = VALUES(confidence_score),
                     contributing_factors = VALUES(contributing_factors)
             """, [
-                student_id, risk_score, risk_level, 0.9, json.dumps([sub[1] for sub in failed_subjects])
+                student_id, risk_score, risk_level, 0.9, json.dumps(contributing_factors)
             ])
             connection.commit()
 
@@ -681,5 +759,62 @@ def load_more_courses(request):
             "courses": courses,
             "next_page_token": next_page_token
         })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+def submit_feedback(request):
+    """Handle student feedback submission."""
+    if request.session.get('role') != 'student':
+        return JsonResponse({"error": "Unauthorized access."}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({"error": "Method not allowed."}, status=405)
+    
+    student_id = request.session.get('user_id')
+    course_id = request.POST.get('course_id')
+    feedback_text = request.POST.get('feedback_text')
+    
+    if not all([student_id, course_id, feedback_text]):
+        return JsonResponse({"error": "Missing required fields."}, status=400)
+    
+    try:
+        with connection.cursor() as cursor:
+            # Insert feedback into the database
+            cursor.execute("""
+                INSERT INTO student_feedback (student_id, course_id, feedback_text)
+                VALUES (%s, %s, %s)
+            """, [student_id, course_id, feedback_text])
+            connection.commit()
+            
+            # Get the last inserted ID
+            feedback_id = cursor.lastrowid
+            
+            # Basic sentiment analysis (you might want to use a more sophisticated approach)
+            # For now, simple scoring based on presence of positive/negative words
+            positive_words = ['good', 'great', 'excellent', 'helpful', 'enjoy', 'like', 'love']
+            negative_words = ['bad', 'poor', 'difficult', 'unhelpful', 'confusing', 'dislike', 'hate']
+            
+            feedback_lower = feedback_text.lower()
+            positive_count = sum(1 for word in positive_words if word in feedback_lower)
+            negative_count = sum(1 for word in negative_words if word in feedback_lower)
+            
+            # Calculate simple sentiment score (-1 to 1)
+            sentiment_score = 0
+            if positive_count > 0 or negative_count > 0:
+                sentiment_score = (positive_count - negative_count) / (positive_count + negative_count)
+            
+            # Update the sentiment score
+            cursor.execute("""
+                UPDATE student_feedback 
+                SET sentiment_score = %s
+                WHERE feedback_id = %s
+            """, [sentiment_score, feedback_id])
+            connection.commit()
+            
+            # Recalculate dropout risk after feedback submission
+            calculate_dropout_risk_for_student(student_id)
+            
+        return JsonResponse({"success": True, "message": "Feedback submitted successfully."})
+    
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
