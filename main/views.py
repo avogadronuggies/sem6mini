@@ -13,6 +13,10 @@ import requests
 import json
 import os
 from dotenv import load_dotenv
+from collections import defaultdict
+from django.views.decorators.http import require_GET
+from django.core.cache import cache  # Import Django's caching framework
+import hashlib  # Import hashlib for sanitizing cache keys
 
 # Load environment variables from .env file
 load_dotenv()
@@ -56,11 +60,11 @@ def login(request):
                     """, [email])
                 elif role == 'teacher':
                     cursor.execute("""
-    SELECT t.teacher_id, t.name, d.department_name, t.phone, t.email, t.date_of_joining, t.password
-    FROM teachers t
-    JOIN departments d ON t.department_id = d.department_id
-    WHERE t.email = %s
-""", [email])
+                        SELECT t.teacher_id, t.name, d.department_name, t.phone, t.email, t.date_of_joining, t.password
+                        FROM teachers t
+                        JOIN departments d ON t.department_id = d.department_id
+                        WHERE t.email = %s
+                    """, [email])
                 elif role == 'parent':
                     cursor.execute("""
                         SELECT parent_id, name, phone, email, occupation, address, relation_to_student, password
@@ -85,7 +89,7 @@ def login(request):
                             'address': user[7],
                             'parent_id': user[8],
                         })
-                        # Automatically calculate and add dropout risk for the student
+                        # Calculate dropout risk and update weak subjects
                         calculate_dropout_risk_for_student(user[0])
 
                     elif role == 'teacher':
@@ -135,7 +139,17 @@ def logout(request):
     return redirect('login')
 
 def fetch_courses_from_api(course_name, page_token=None):
-    """Fetch playlists from YouTube API and courses from Coursera API for a given course with pagination."""
+    """Fetch playlists from YouTube API and courses from Coursera API with caching."""
+    # Sanitize the cache key to avoid invalid characters
+    raw_cache_key = f"courses_{course_name}_{page_token}"
+    cache_key = hashlib.md5(raw_cache_key.encode()).hexdigest()  # Use MD5 hash for a valid cache key
+    cached_courses = cache.get(cache_key)  # Check if the data is already cached
+
+    if cached_courses:
+        print(f"Cache hit for {raw_cache_key}")  # Debugging log
+        return cached_courses, None  # Return cached data
+
+    print(f"Cache miss for {raw_cache_key}. Fetching from APIs...")  # Debugging log
     courses = []
     next_page_token = None
 
@@ -144,6 +158,10 @@ def fetch_courses_from_api(course_name, page_token=None):
     youtube_search_url = "https://www.googleapis.com/youtube/v3/search"
 
     try:
+        if not api_key:
+            print("YouTube API key is missing. Please check your .env file.")
+            return courses, next_page_token
+
         params = {
             "part": "snippet",
             "q": course_name,
@@ -166,6 +184,10 @@ def fetch_courses_from_api(course_name, page_token=None):
                     'difficulty_level': 'N/A',
                 })
             next_page_token = response.json().get("nextPageToken")
+        elif response.status_code == 403 and "quotaExceeded" in response.text:
+            print("YouTube API quota exceeded. Please wait until the quota resets or use a different API key.")
+        else:
+            print(f"Error fetching playlists from YouTube: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"Error fetching playlists from YouTube: {e}")
 
@@ -187,8 +209,14 @@ def fetch_courses_from_api(course_name, page_token=None):
                     'description': course.get('description', ''),
                     'difficulty_level': 'N/A',
                 })
+        else:
+            print(f"Error fetching courses from Coursera: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"Error fetching courses from Coursera: {e}")
+
+    # Cache the fetched data for 1 hour (3600 seconds)
+    cache.set(cache_key, courses, timeout=3600)
+    print(f"Data cached for {raw_cache_key}")  # Debugging log
 
     return courses, next_page_token
 
@@ -199,39 +227,35 @@ def recommend_courses(student_id):
 
     try:
         with connection.cursor() as cursor:
-            # Fetch courses from academic records where marks are less than 50
+            # Fetch weak courses based on academic performance
             cursor.execute("""
-                SELECT course_name
-                FROM academic_records
-                WHERE student_id = %s AND marks < 50
+                SELECT subject_id, subject_name
+                FROM weak_subjects
+                WHERE student_id = %s
             """, [student_id])
             weak_courses = cursor.fetchall()
             print(f"Weak courses for student {student_id}: {weak_courses}")  # Debugging log
 
             if not weak_courses:
                 print(f"No weak courses found for student {student_id}")  # Debugging log
+                return recommendations
 
-            # For each weak course, find recommended videos
-            for course in weak_courses:
-                course_name = course[0]
+            # For each weak course, fetch and store recommendations
+            for weak_course in weak_courses:
+                weak_subject_id, course_name = weak_course
                 print(f"Fetching API courses for weak course: {course_name}")  # Debugging log
 
-                # Fetch videos from external APIs
+                # Fetch courses and videos from external APIs
                 api_courses, _ = fetch_courses_from_api(course_name)
                 print(f"API courses for {course_name}: {api_courses}")  # Debugging log
 
                 if not api_courses:
                     print(f"No API courses found for {course_name}")  # Debugging log
+                    continue
 
-                # Convert JSON data to a DataFrame before inserting
-                api_courses_df = pd.DataFrame(api_courses)
-                print("Converted API courses to DataFrame:")
-                print(api_courses_df)
-
-                # Iterate over the DataFrame rows and insert into the database
-                for _, course in api_courses_df.iterrows():
+                # Insert API data into the `online_courses` table
+                for course in api_courses:
                     try:
-                        print(f"Attempting to insert course: {course['course_title']} into online_courses")  # Debugging log
                         cursor.execute("""
                             INSERT INTO online_courses (platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -243,55 +267,56 @@ def recommend_courses(student_id):
                             course['course_title'],
                             course['course_url'],
                             course['description'],
-                            course.get('subject_category', 'General'),
+                            course_name,  # Use the weak course name as the subject category
                             course.get('difficulty_level', 'N/A'),
                             course.get('price', 0.0),
                             course.get('is_free', True)
                         ])
-                        connection.commit()  # Explicit commit to ensure data persistence
-                        print(f"Successfully inserted course: {course['course_title']}")  # Debugging log
+                        connection.commit()
+                        print(f"Inserted course: {course['course_title']} into online_courses")  # Debugging log
                     except Exception as e:
                         print(f"Error inserting course into online_courses: {e}")
 
-                # Fetch data from the online_courses table to display
+                # Insert recommendations into `student_course_recommendations` table
+                for course in api_courses:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                            SELECT %s, %s, oc.online_course_id, NOW()
+                            FROM online_courses oc
+                            WHERE oc.course_title = %s AND oc.platform = %s
+                            ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                        """, [
+                            student_id,
+                            weak_subject_id,
+                            course['course_title'],
+                            course['platform']
+                        ])
+                        connection.commit()
+                        print(f"Inserted recommendation for course: {course['course_title']} into student_course_recommendations")  # Debugging log
+                    except Exception as e:
+                        print(f"Error inserting recommendation into student_course_recommendations: {e}")
+
+                # Fetch stored courses from the database for display
                 cursor.execute("""
                     SELECT platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free
                     FROM online_courses
                     WHERE subject_category = %s
                 """, [course_name])
-                fetched_courses = cursor.fetchall()
-                print(f"Fetched courses for display: {fetched_courses}")
+                stored_courses = cursor.fetchall()
 
-                for video in api_courses:
-                    # Add to recommendations list
+                # Add stored courses to recommendations
+                for stored_course in stored_courses:
                     recommendations.append({
-                        'course_name': course_name,
-                        'video_title': video['course_title'],
-                        'platform': video['platform'],
-                        'video_url': video['course_url'],
-                        'description': video['description'],
-                        'difficulty_level': video['difficulty_level'],
+                        'platform': stored_course[0],
+                        'course_title': stored_course[1],
+                        'course_url': stored_course[2],
+                        'description': stored_course[3],
+                        'subject_category': stored_course[4],
+                        'difficulty_level': stored_course[5],
+                        'price': stored_course[6],
+                        'is_free': stored_course[7],
                     })
-
-            # Convert course recommendations to JSON format
-            recommendations_json = json.dumps([
-                {
-                    'course_name': rec['course_name'],
-                    'video_title': rec['video_title'],
-                    'platform': rec['platform'],
-                    'video_url': rec['video_url'],
-                    'description': rec['description'],
-                    'difficulty_level': rec['difficulty_level']
-                }
-                for rec in recommendations
-            ])
-
-            # Store JSON data in a DataFrame (for demonstration purposes)
-            df = pd.DataFrame(json.loads(recommendations_json))
-            print(df)  # Debugging log to verify DataFrame content
-
-            # Pass JSON data to the template
-            course_recommendations = json.loads(recommendations_json)
 
     except Exception as e:
         print(f"Error recommending courses for student {student_id}: {e}")
@@ -307,6 +332,7 @@ def student_dashboard(request):
     student_data = {}
     dropout_risk = None
     course_recommendations = []
+    semesters = []
 
     try:
         with connection.cursor() as cursor:
@@ -317,41 +343,17 @@ def student_dashboard(request):
                 WHERE student_id = %s
             """, [student_id])
             student_data['details'] = cursor.fetchone()
-            print(f"Student details: {student_data['details']}")  # Debugging log
 
-            # Fetch academic records
+            # Fetch all semesters for the student
             cursor.execute("""
-    SELECT ar.semester_id, d.department_name, c.course_name, ar.marks
-    FROM academic_records ar
-    JOIN courses c ON ar.course_id = c.course_id
-    JOIN departments d ON c.department_id = d.department_id
-    WHERE ar.student_id = %s
-""", [student_id])
-            student_data['academic_records'] = cursor.fetchall()
-            print(f"Academic records: {student_data['academic_records']}")  # Debugging log
+                SELECT DISTINCT semester_id
+                FROM academic_records
+                WHERE student_id = %s
+                ORDER BY semester_id
+            """, [student_id])
+            semesters = [row[0] for row in cursor.fetchall()]
 
-            # Fetch attendance records
-            cursor.execute("""
-    SELECT ar.semester_id, d.department_name, c.course_name, ar.attendance
-    FROM attendance_records ar
-    JOIN courses c ON ar.course_id = c.course_id
-    JOIN departments d ON c.department_id = d.department_id
-    WHERE ar.student_id = %s
-""", [student_id])
-            student_data['attendance_records'] = cursor.fetchall()
-            print(f"Attendance records: {student_data['attendance_records']}")  # Debugging log
-
-            # Fetch feedback
-            cursor.execute("""
-    SELECT c.course_name, sf.feedback_text, sf.sentiment_score
-    FROM student_feedback sf
-    JOIN courses c ON sf.course_id = c.course_id
-    WHERE sf.student_id = %s
-""", [student_id])
-            student_data['feedback'] = cursor.fetchall()
-            print(f"Feedback: {student_data['feedback']}")  # Debugging log
-
-            # Fetch the most recent dropout risk data
+            # Fetch dropout risk
             cursor.execute("""
                 SELECT risk_score, risk_level, confidence_score, contributing_factors
                 FROM dropout_risk
@@ -360,15 +362,17 @@ def student_dashboard(request):
                 LIMIT 1
             """, [student_id])
             dropout_risk = cursor.fetchone()
-            print(f"Dropout risk: {dropout_risk}")  # Debugging log
 
-            # Fetch recommended courses directly from the API
-            weak_courses = [record[2] for record in student_data['academic_records'] if record[3] < 50]
-            print(f"Weak courses: {weak_courses}")  # Debugging log
+            # Fetch weak subjects and recommend courses
+            cursor.execute("""
+                SELECT subject_name
+                FROM weak_subjects
+                WHERE student_id = %s
+            """, [student_id])
+            weak_subjects = [row[0] for row in cursor.fetchall()]
 
-            for course_name in weak_courses:
-                api_courses, next_page_token = fetch_courses_from_api(course_name)
-                print(f"API courses for {course_name}: {api_courses}")  # Debugging log
+            for subject_name in weak_subjects:
+                api_courses, _ = fetch_courses_from_api(subject_name)
                 course_recommendations.extend(api_courses)
 
     except Exception as e:
@@ -378,6 +382,51 @@ def student_dashboard(request):
         'student_data': student_data,
         'dropout_risk': dropout_risk,
         'course_recommendations': course_recommendations,
+        'semesters': semesters,
+    })
+
+@require_GET
+def fetch_records(request):
+    """Fetch academic and attendance records dynamically based on semester."""
+    if request.session.get('role') != 'student':
+        return JsonResponse({"error": "Unauthorized access."}, status=403)
+
+    student_id = request.session.get('user_id')
+    semester_id = request.GET.get('semester_id')
+
+    if not semester_id:
+        # Default to the current semester if no semester_id is provided
+        semester_id = request.session.get('current_semester')
+
+    academic_records = []
+    attendance_records = []
+
+    try:
+        with connection.cursor() as cursor:
+            # Fetch academic records
+            cursor.execute("""
+                SELECT c.course_name, ar.marks
+                FROM academic_records ar
+                JOIN courses c ON ar.course_id = c.course_id
+                WHERE ar.student_id = %s AND ar.semester_id = %s
+            """, [student_id, semester_id])
+            academic_records = cursor.fetchall()
+
+            # Fetch attendance records
+            cursor.execute("""
+                SELECT c.course_name, ar.attendance
+                FROM attendance_records ar
+                JOIN courses c ON ar.course_id = c.course_id
+                WHERE ar.student_id = %s AND ar.semester_id = %s
+            """, [student_id, semester_id])
+            attendance_records = cursor.fetchall()
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({
+        "academic_records": academic_records,
+        "attendance_records": attendance_records,
     })
 
 def teacher_dashboard(request):
@@ -527,43 +576,47 @@ def calculate_dropout_risk():
         print(f"Error calculating dropout risk: {e}")
 
 def calculate_dropout_risk_for_student(student_id):
-    """Calculate dropout risk for a specific student based on database data."""
+    """Calculate dropout risk for a specific student and update weak subjects."""
     try:
         with connection.cursor() as cursor:
-            # Fetch student data and subjects with marks less than 35
+            # Fetch academic records with marks less than 40
             cursor.execute("""
-                SELECT c.course_name, ar.marks
+                SELECT ar.course_id, c.course_name, ar.marks
                 FROM academic_records ar
                 JOIN courses c ON ar.course_id = c.course_id
-                WHERE ar.student_id = %s AND ar.marks < 35
+                WHERE ar.student_id = %s AND ar.marks < 40
             """, [student_id])
             failed_subjects = cursor.fetchall()
 
-        if failed_subjects:
             # Calculate dropout risk based on failed subjects
-            risk_score = 80  # High risk if the student has failed subjects
-            risk_level = 'High'
+            risk_score = 0
+            risk_level = 'None'
+            if failed_subjects:
+                risk_score = 80  # High risk if the student has failed subjects
+                risk_level = 'High'
 
-            # Update the database with dropout risk
-            with connection.cursor() as cursor:
-                failed_courses = [subject[0] for subject in failed_subjects]  # List of failed course names
-                cursor.execute("""
-                    INSERT INTO dropout_risk (student_id, risk_score, risk_level, confidence_score, contributing_factors)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        risk_score = VALUES(risk_score),
-                        risk_level = VALUES(risk_level),
-                        confidence_score = VALUES(confidence_score),
-                        contributing_factors = VALUES(contributing_factors)
-                """, [
-                    student_id, risk_score, risk_level, 0.9, str(failed_courses)
-                ])
-                connection.commit()  # Explicit commit to ensure data persistence
+            # Insert or update dropout risk in the database
+            cursor.execute("""
+                INSERT INTO dropout_risk (student_id, risk_score, risk_level, confidence_score, contributing_factors)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    risk_score = VALUES(risk_score),
+                    risk_level = VALUES(risk_level),
+                    confidence_score = VALUES(confidence_score),
+                    contributing_factors = VALUES(contributing_factors)
+            """, [
+                student_id, risk_score, risk_level, 0.9, json.dumps([sub[1] for sub in failed_subjects])
+            ])
+            connection.commit()
 
-            # Recommend courses for failed subjects
+            # Update weak subjects table
+            cursor.execute("DELETE FROM weak_subjects WHERE student_id = %s", [student_id])
             for subject in failed_subjects:
-                subject_name = subject[0]
-                recommend_courses_for_subject(student_id, subject_name)
+                cursor.execute("""
+                    INSERT INTO weak_subjects (student_id, subject_code, subject_name)
+                    VALUES (%s, %s, %s)
+                """, [student_id, subject[0], subject[1]])
+            connection.commit()
 
     except Exception as e:
         print(f"Error calculating dropout risk for student {student_id}: {e}")
@@ -583,15 +636,15 @@ def recommend_courses_for_subject(student_id, course_name):
                     # Insert the recommended course into the database
                     cursor.execute("""
                         INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
-    SELECT %s, NULL, oc.online_course_id, NOW()
-    FROM online_courses oc
-                        WHERE CONVERT(oc.platform USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(%s USING utf8mb4) COLLATE utf8mb4_general_ci
-                          AND CONVERT(oc.course_title USING utf8mb4) COLLATE utf8mb4_general_ci = CONVERT(%s USING utf8mb4) COLLATE utf8mb4_general_ci
+                        SELECT %s, ws.subject_id, oc.online_course_id, NOW()
+                        FROM weak_subjects ws
+                        JOIN online_courses oc ON oc.course_title = %s AND oc.platform = %s
+                        WHERE ws.student_id = %s AND ws.subject_name = %s
                         ON DUPLICATE KEY UPDATE recommendation_date = NOW()
                     """, [
-                        student_id, course['platform'], course['course_title']
+                        student_id, course['course_title'], course['platform'], student_id, course_name
                     ])
-                    connection.commit()  # Explicit commit to ensure data persistence
+                    connection.commit()
                     print(f"Successfully inserted recommendation for course: {course['course_title']}")  # Debugging log
                 except Exception as e:
                     print(f"Error inserting recommendation for course {course['course_title']}: {e}")
@@ -606,7 +659,7 @@ def calculate_dropout_risk_for_parent(parent_id):
             cursor.execute("""
                 SELECT student_id
                 FROM students
-                WHERE parent_id = %s 
+                WHERE parent_id = %s
             """, [parent_id])
             children = cursor.fetchall()
 

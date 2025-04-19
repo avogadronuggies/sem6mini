@@ -1,0 +1,111 @@
+/* Root Variables */
+:root {
+    --primary: #3674b5;
+    --secondary: #578fca;
+    --light: #f5f9fc;
+    --accent: #a1e3f9;
+    --success: #28a745;
+    --danger: #dc3545;
+    --transition: all 0.3s ease;
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-hover: 0 10px 15px rgba(0, 0, 0, 0.15);
+    --border-radius: 15px;
+}
+
+/* General Styles */
+body {
+    background-color: var(--light);
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    padding-top: 56px;
+}
+
+.navbar {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    background-color: var(--primary);
+    box-shadow: var(--shadow);
+    z-index: 1000;
+}
+
+.sidebar {
+    background: linear-gradient(135deg, var(--accent), var(--secondary));
+    height: 100vh;
+    box-shadow: var(--shadow);
+    position: fixed;
+    top: 56px;
+    left: 0;
+    z-index: 100;
+    padding-top: 20px;
+    transition: var(--transition);
+}
+
+.sidebar .nav-link {
+    color: #fff;
+    padding: 10px 15px;
+    margin: 5px 0;
+    border-radius: 5px;
+    transition: var(--transition);
+}
+
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateX(5px);
+}
+
+.main-content {
+    margin-left: 250px;
+    padding: 20px;
+    transition: var(--transition);
+}
+
+.semester-selector {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.semester-selector label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.semester-selector select {
+    padding: 5px 10px;
+    border-radius: 5px;
+    width:100px;
+    border: 1px solid var(--secondary);
+}
+
+.table {
+    background-color: #fff;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.table th {
+    background-color: var(--primary);
+    color: #fff;
+    text-align: center;
+}
+
+.table td {
+    text-align: center;
+}
+
+.progress-bar {
+    font-weight: bold;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    transition: var(--transition);
+}
+
+.btn-primary:hover {
+    background-color: var(--secondary);
+    border-color: var(--secondary);
+}

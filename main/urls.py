@@ -10,4 +10,5 @@ urlpatterns = [
     path('parent_dashboard/', views.parent_dashboard, name='parent_dashboard'),
     path('logout/', views.logout, name='logout'),
     path('load_more_courses', views.load_more_courses, name='load_more_courses'),
+    path('fetch_records/', views.fetch_records, name='fetch_records'),
 ]
