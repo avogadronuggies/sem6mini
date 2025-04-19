@@ -18,6 +18,7 @@ from django.views.decorators.http import require_GET
 from django.core.cache import cache  # Import Django's caching framework
 import hashlib  # Import hashlib for sanitizing cache keys
 from django.contrib import messages  # Import for displaying success/error messages
+from django.views.decorators.csrf import csrf_exempt  # Import for handling CSRF in admin forms
 
 # Load environment variables from .env file
 load_dotenv()
@@ -29,6 +30,8 @@ def index(request):
         return redirect('teacher_dashboard')
     elif request.session.get('role') == 'parent':
         return redirect('parent_dashboard')
+    elif request.session.get('role') == 'admin':
+        return redirect('admin_dashboard')
     return render(request, 'main/index.html')
 
 def login(request):
@@ -47,12 +50,13 @@ def login(request):
             error_message = 'All fields are required'
             return render(request, 'main/login.html', {'error_message': error_message})
 
-        if role not in ['student', 'teacher', 'parent']:
+        if role not in ['student', 'teacher', 'parent', 'admin']:
             error_message = 'Invalid role selected'
             return render(request, 'main/login.html', {'error_message': error_message})
 
         try:
             with connection.cursor() as cursor:
+                # Query based on role
                 if role == 'student':
                     cursor.execute("""
                         SELECT student_id, name, branch, current_semester, batch_year, phone, email, address, parent_id, password
@@ -72,11 +76,17 @@ def login(request):
                         FROM parents
                         WHERE email = %s
                     """, [email])
+                elif role == 'admin':  # Handle admin login
+                    cursor.execute("""
+                        SELECT admin_id, name, email, password
+                        FROM admin
+                        WHERE email = %s
+                    """, [email])
 
                 user = cursor.fetchone()
 
                 if user:
-                    # Check if the entered password matches the hashed password in the database
+                    # Check if the entered password matches the password in the database
                     if user[-1] == password:  # Compare plain-text password
                         # Set session data based on role
                         if role == 'student':
@@ -92,7 +102,6 @@ def login(request):
                                 'address': user[7],
                                 'parent_id': user[8],
                             })
-                            # Calculate dropout risk and update weak subjects
                             calculate_dropout_risk_for_student(user[0])
 
                         elif role == 'teacher':
@@ -117,8 +126,15 @@ def login(request):
                                 'address': user[5],
                                 'relation_to_student': user[6],
                             })
-                            # Automatically calculate and add dropout risk for all children of the parent
                             calculate_dropout_risk_for_parent(user[0])
+
+                        elif role == 'admin':  # Admin login
+                            request.session.update({
+                                'user_id': user[0],
+                                'role': role,
+                                'name': user[1],
+                                'email': user[2],
+                            })
 
                         # Set session expiry based on "Remember Me"
                         if remember_me:
@@ -126,7 +142,11 @@ def login(request):
                         else:
                             request.session.set_expiry(0)  # Until browser closes
 
-                        return redirect(f'{role}_dashboard')
+                        # Redirect based on role
+                        if role == 'admin':
+                            return redirect('admin_dashboard')
+                        else:
+                            return redirect(f'{role}_dashboard')
                     else:
                         error_message = 'Incorrect password'
                         return render(request, 'main/login.html', {'error_message': error_message})
@@ -484,6 +504,7 @@ def fetch_records(request):
         "course_list": course_list,
         "existing_feedback": feedback_dict
     })
+
 def teacher_dashboard(request):
     if request.session.get('role') != 'teacher':
         return redirect('login')
@@ -522,6 +543,124 @@ def parent_dashboard(request):
         'relation_to_student': request.session.get('relation_to_student'),
         'address': request.session.get('address'),
         'child_dropout_risks': child_dropout_risks,
+    })
+
+@csrf_exempt
+def admin_dashboard(request):
+    """Admin dashboard to add students, parents, teachers, and their data."""
+    if request.session.get('role') != 'admin':
+        return redirect('login')
+
+    message = None
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        try:
+            with connection.cursor() as cursor:
+                if action == 'add_student':
+                    # Add a new student
+                    name = request.POST.get('name')
+                    branch = request.POST.get('branch')
+                    current_semester = request.POST.get('current_semester')
+                    batch_year = request.POST.get('batch_year')
+                    phone = request.POST.get('phone')
+                    email = request.POST.get('email')
+                    password = request.POST.get('password')
+                    address = request.POST.get('address')
+                    parent_id = request.POST.get('parent_id')
+
+                    cursor.execute("""
+                        INSERT INTO students (name, branch, current_semester, batch_year, phone, email, password, address, parent_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, [name, branch, current_semester, batch_year, phone, email, password, address, parent_id])
+                    connection.commit()
+                    message = "Student added successfully!"
+
+                elif action == 'add_parent':
+                    # Add a new parent
+                    name = request.POST.get('name')
+                    phone = request.POST.get('phone')
+                    email = request.POST.get('email')
+                    password = request.POST.get('password')
+                    occupation = request.POST.get('occupation')
+                    address = request.POST.get('address')
+                    relation_to_student = request.POST.get('relation_to_student')
+
+                    cursor.execute("""
+                        INSERT INTO parents (name, phone, email, password, occupation, address, relation_to_student)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, [name, phone, email, password, occupation, address, relation_to_student])
+                    connection.commit()
+                    message = "Parent added successfully!"
+
+                elif action == 'add_teacher':
+                    # Add a new teacher
+                    name = request.POST.get('name')
+                    department_id = request.POST.get('department_id')
+                    phone = request.POST.get('phone')
+                    email = request.POST.get('email')
+                    password = request.POST.get('password')
+                    date_of_joining = request.POST.get('date_of_joining')
+
+                    cursor.execute("""
+                        INSERT INTO teachers (name, department_id, phone, email, password, date_of_joining)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, [name, department_id, phone, email, password, date_of_joining])
+                    connection.commit()
+                    message = "Teacher added successfully!"
+
+                elif action == 'add_marks':
+                    # Add marks for a student
+                    student_id = request.POST.get('student_id')
+                    semester_id = request.POST.get('semester_id')
+                    course_id = request.POST.get('course_id')
+                    marks = request.POST.get('marks')
+
+                    cursor.execute("""
+                        INSERT INTO academic_records (student_id, semester_id, course_id, marks)
+                        VALUES (%s, %s, %s, %s)
+                    """, [student_id, semester_id, course_id, marks])
+                    connection.commit()
+                    message = "Marks added successfully!"
+
+        except Exception as e:
+            message = f"Error: {e}"
+
+    # Fetch data for dropdowns
+    parents = []
+    teachers = []
+    departments = []
+    courses = []
+    semesters = []
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT parent_id, name FROM parents")
+            parents = cursor.fetchall()
+
+            cursor.execute("SELECT teacher_id, name FROM teachers")
+            teachers = cursor.fetchall()
+
+            cursor.execute("SELECT department_id, department_name FROM departments")
+            departments = cursor.fetchall()
+
+            cursor.execute("SELECT course_id, course_name FROM courses")
+            courses = cursor.fetchall()
+
+            cursor.execute("SELECT semester_id, year FROM semesters")
+            semesters = cursor.fetchall()
+
+    except Exception as e:
+        message = f"Error fetching data: {e}"
+
+    return render(request, 'main/admin_dashboard.html', {
+        'message': message,
+        'parents': parents,
+        'teachers': teachers,
+        'departments': departments,
+        'courses': courses,
+        'semesters': semesters,
     })
 
 def calculate_dropout_risk():
@@ -845,8 +984,6 @@ def edit_profile(request):
     """Allow students, teachers, and parents to update their profile information and change their password."""
     if request.method == 'POST':
         role = request.session.get('role')
-        user_id = request.session.get('user_id')
-
         # Check if the request is for updating profile or changing password
         if 'change_password' in request.POST:
             current_password = request.POST.get('current_password')

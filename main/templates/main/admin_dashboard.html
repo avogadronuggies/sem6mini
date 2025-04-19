@@ -1,0 +1,314 @@
+{% extends 'main/base.html' %} {% block title %}Admin Dashboard{% endblock %}
+{%block content %}
+<div class="d-flex">
+  <!-- Sidebar -->
+  <nav
+    class="sidebar bg-dark text-white p-3"
+    style="
+      width: 250px;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      overflow-y: auto;
+    "
+  >
+    <h4 class="text-center">Admin Panel</h4>
+    <ul class="nav flex-column mt-4">
+      <li class="nav-item">
+        <a class="nav-link text-white" href="#add-teacher">
+          <i class="fas fa-chalkboard-teacher me-2"></i>Add Teacher
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link text-white" href="#add-student">
+          <i class="fas fa-user-graduate me-2"></i>Add Student & Parent
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link text-white" href="#manage-database">
+          <i class="fas fa-database me-2"></i>Manage Database
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <!-- Main Content -->
+  <div
+    class="main-content"
+    style="margin-left: 250px; padding: 20px; width: calc(100% - 250px)"
+  >
+    <h2>Welcome, {{ name }}</h2>
+    <p>Use the sidebar to navigate through admin options.</p>
+
+    <!-- Add Teacher Section -->
+    <section id="add-teacher" class="mt-5">
+      <h3>Add Teacher</h3>
+      <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_teacher" />
+        <div class="mb-3">
+          <label for="teacher-name" class="form-label">Name</label>
+          <input
+            type="text"
+            class="form-control"
+            id="teacher-name"
+            name="name"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="department-id" class="form-label">Department</label>
+          <select
+            class="form-select"
+            id="department-id"
+            name="department_id"
+            required
+          >
+            {% for department in departments %}
+            <option value="{{ department.0 }}">{{ department.1 }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="teacher-phone" class="form-label">Phone</label>
+          <input
+            type="text"
+            class="form-control"
+            id="teacher-phone"
+            name="phone"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="teacher-email" class="form-label">Email</label>
+          <input
+            type="email"
+            class="form-control"
+            id="teacher-email"
+            name="email"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="teacher-password" class="form-label">Password</label>
+          <input
+            type="password"
+            class="form-control"
+            id="teacher-password"
+            name="password"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="date-of-joining" class="form-label"
+            >Date of Joining</label
+          >
+          <input
+            type="date"
+            class="form-control"
+            id="date-of-joining"
+            name="date_of_joining"
+            required
+          />
+        </div>
+        <button type="submit" class="btn btn-primary">Add Teacher</button>
+      </form>
+    </section>
+
+    <!-- Add Student & Parent Section -->
+    <section id="add-student" class="mt-5">
+      <h3>Add Student & Parent</h3>
+      <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_student" />
+        <h4>Student Details</h4>
+        <div class="mb-3">
+          <label for="student-name" class="form-label">Name</label>
+          <input
+            type="text"
+            class="form-control"
+            id="student-name"
+            name="name"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="branch" class="form-label">Branch</label>
+          <input
+            type="text"
+            class="form-control"
+            id="branch"
+            name="branch"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="current-semester" class="form-label"
+            >Current Semester</label
+          >
+          <input
+            type="number"
+            class="form-control"
+            id="current-semester"
+            name="current_semester"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="batch-year" class="form-label">Batch Year</label>
+          <input
+            type="number"
+            class="form-control"
+            id="batch-year"
+            name="batch_year"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="student-phone" class="form-label">Phone</label>
+          <input
+            type="text"
+            class="form-control"
+            id="student-phone"
+            name="phone"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="student-email" class="form-label">Email</label>
+          <input
+            type="email"
+            class="form-control"
+            id="student-email"
+            name="email"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="student-password" class="form-label">Password</label>
+          <input
+            type="password"
+            class="form-control"
+            id="student-password"
+            name="password"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="student-address" class="form-label">Address</label>
+          <textarea
+            class="form-control"
+            id="student-address"
+            name="address"
+            rows="3"
+            required
+          ></textarea>
+        </div>
+
+        <h4>Parent Details</h4>
+        <div class="mb-3">
+          <label for="parent-name" class="form-label">Name</label>
+          <input
+            type="text"
+            class="form-control"
+            id="parent-name"
+            name="parent_name"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="parent-phone" class="form-label">Phone</label>
+          <input
+            type="text"
+            class="form-control"
+            id="parent-phone"
+            name="parent_phone"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="parent-email" class="form-label">Email</label>
+          <input
+            type="email"
+            class="form-control"
+            id="parent-email"
+            name="parent_email"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="parent-password" class="form-label">Password</label>
+          <input
+            type="password"
+            class="form-control"
+            id="parent-password"
+            name="parent_password"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="parent-occupation" class="form-label">Occupation</label>
+          <input
+            type="text"
+            class="form-control"
+            id="parent-occupation"
+            name="parent_occupation"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="parent-address" class="form-label">Address</label>
+          <textarea
+            class="form-control"
+            id="parent-address"
+            name="parent_address"
+            rows="3"
+            required
+          ></textarea>
+        </div>
+        <div class="mb-3">
+          <label for="relation-to-student" class="form-label"
+            >Relation to Student</label
+          >
+          <select
+            class="form-select"
+            id="relation-to-student"
+            name="relation_to_student"
+            required
+          >
+            <option value="father">Father</option>
+            <option value="mother">Mother</option>
+            <option value="guardian">Guardian</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          Add Student & Parent
+        </button>
+      </form>
+    </section>
+
+    <!-- Manage Database Section -->
+    <section id="manage-database" class="mt-5">
+      <h3>Manage Database</h3>
+      <p>Perform advanced database operations here.</p>
+      <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="manage_database" />
+        <div class="mb-3">
+          <label for="sql-query" class="form-label">SQL Query</label>
+          <textarea
+            class="form-control"
+            id="sql-query"
+            name="sql_query"
+            rows="5"
+            placeholder="Enter your SQL query here..."
+            required
+          ></textarea>
+        </div>
+        <button type="submit" class="btn btn-danger">Execute Query</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}
