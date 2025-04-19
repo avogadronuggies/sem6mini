@@ -128,6 +128,11 @@
                 aria-labelledby="navbarDropdown"
               >
                 <li>
+                  <a class="dropdown-item" href="{% url 'edit_profile' %}">
+                    <i class="fas fa-user-edit me-2"></i>Edit Profile
+                  </a>
+                </li>
+                <li>
                   <a class="dropdown-item" href="{% url 'logout' %}">
                     <i class="fas fa-sign-out-alt me-2"></i>Logout
                   </a>
@@ -319,7 +324,7 @@
       <h2>Semesters</h2>
       <ul>
         {% for semester in semesters %}
-          <li>Semester {{ semester }}</li>
+        <li>Semester {{ semester }}</li>
         {% endfor %}
       </ul>
     </div>

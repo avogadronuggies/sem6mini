@@ -17,6 +17,7 @@ from collections import defaultdict
 from django.views.decorators.http import require_GET
 from django.core.cache import cache  # Import Django's caching framework
 import hashlib  # Import hashlib for sanitizing cache keys
+from django.contrib import messages  # Import for displaying success/error messages
 
 # Load environment variables from .env file
 load_dotenv()
@@ -74,56 +75,61 @@ def login(request):
 
                 user = cursor.fetchone()
 
-                if user and user[-1] == password:  # Compare password (last column)
-                    # Set session data based on role
-                    if role == 'student':
-                        request.session.update({
-                            'user_id': user[0],
-                            'role': role,
-                            'name': user[1],
-                            'branch': user[2],
-                            'current_semester': user[3],
-                            'batch_year': user[4],
-                            'phone': user[5],
-                            'email': user[6],
-                            'address': user[7],
-                            'parent_id': user[8],
-                        })
-                        # Calculate dropout risk and update weak subjects
-                        calculate_dropout_risk_for_student(user[0])
+                if user:
+                    # Check if the entered password matches the hashed password in the database
+                    if user[-1] == password:  # Compare plain-text password
+                        # Set session data based on role
+                        if role == 'student':
+                            request.session.update({
+                                'user_id': user[0],
+                                'role': role,
+                                'name': user[1],
+                                'branch': user[2],
+                                'current_semester': user[3],
+                                'batch_year': user[4],
+                                'phone': user[5],
+                                'email': user[6],
+                                'address': user[7],
+                                'parent_id': user[8],
+                            })
+                            # Calculate dropout risk and update weak subjects
+                            calculate_dropout_risk_for_student(user[0])
 
-                    elif role == 'teacher':
-                        request.session.update({
-                            'user_id': user[0],
-                            'role': role,
-                            'name': user[1],
-                            'department': user[2],
-                            'phone': user[3],
-                            'email': user[4],
-                            'date_of_joining': user[5].isoformat(),
-                        })
+                        elif role == 'teacher':
+                            request.session.update({
+                                'user_id': user[0],
+                                'role': role,
+                                'name': user[1],
+                                'department': user[2],
+                                'phone': user[3],
+                                'email': user[4],
+                                'date_of_joining': user[5].isoformat(),
+                            })
 
-                    elif role == 'parent':
-                        request.session.update({
-                            'user_id': user[0],
-                            'role': role,
-                            'name': user[1],
-                            'phone': user[2],
-                            'email': user[3],
-                            'occupation': user[4],
-                            'address': user[5],
-                            'relation_to_student': user[6],
-                        })
-                        # Automatically calculate and add dropout risk for all children of the parent
-                        calculate_dropout_risk_for_parent(user[0])
+                        elif role == 'parent':
+                            request.session.update({
+                                'user_id': user[0],
+                                'role': role,
+                                'name': user[1],
+                                'phone': user[2],
+                                'email': user[3],
+                                'occupation': user[4],
+                                'address': user[5],
+                                'relation_to_student': user[6],
+                            })
+                            # Automatically calculate and add dropout risk for all children of the parent
+                            calculate_dropout_risk_for_parent(user[0])
 
-                    # Set session expiry based on "Remember Me"
-                    if remember_me:
-                        request.session.set_expiry(30 * 24 * 60 * 60)  # 30 days
+                        # Set session expiry based on "Remember Me"
+                        if remember_me:
+                            request.session.set_expiry(30 * 24 * 60 * 60)  # 30 days
+                        else:
+                            request.session.set_expiry(0)  # Until browser closes
+
+                        return redirect(f'{role}_dashboard')
                     else:
-                        request.session.set_expiry(0)  # Until browser closes
-
-                    return redirect(f'{role}_dashboard')
+                        error_message = 'Incorrect password'
+                        return render(request, 'main/login.html', {'error_message': error_message})
                 else:
                     error_message = 'Invalid credentials'
                     return render(request, 'main/login.html', {'error_message': error_message})
@@ -625,31 +631,104 @@ def recommend_courses_for_subject(student_id, course_name):
     """Fetch and recommend courses for a specific course."""
     print(f"Starting recommendation for subject: {course_name} for student: {student_id}")  # Debugging log
     try:
-        # Fetch courses from external APIs
-        api_courses, _ = fetch_courses_from_api(course_name)
-        print(f"API courses fetched for {course_name}: {api_courses}")  # Debugging log
-
         with connection.cursor() as cursor:
-            for course in api_courses:
-                try:
-                    print(f"Attempting to insert recommendation for course: {course['course_title']} into student_course_recommendations")  # Debugging log
-                    # Insert the recommended course into the database
-                    cursor.execute("""
-                        INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
-                        SELECT %s, ws.subject_id, oc.online_course_id, NOW()
-                        FROM weak_subjects ws
-                        JOIN online_courses oc ON oc.course_title = %s AND oc.platform = %s
-                        WHERE ws.student_id = %s AND ws.subject_name = %s
-                        ON DUPLICATE KEY UPDATE recommendation_date = NOW()
-                    """, [
-                        student_id, course['course_title'], course['platform'], student_id, course_name
-                    ])
-                    connection.commit()
-                    print(f"Successfully inserted recommendation for course: {course['course_title']}")  # Debugging log
-                except Exception as e:
-                    print(f"Error inserting recommendation for course {course['course_title']}: {e}")
+            # Check if courses for the subject already exist in the database
+            cursor.execute("""
+                SELECT online_course_id, platform, course_title, course_url, description, difficulty_level
+                FROM online_courses
+                WHERE subject_category = %s
+            """, [course_name])
+            existing_courses = cursor.fetchall()
+
+            if existing_courses:
+                print(f"Found {len(existing_courses)} courses in the database for subject: {course_name}")  # Debugging log
+                # Insert recommendations into `student_course_recommendations` table
+                for course in existing_courses:
+                    try:
+                        cursor.execute("""
+                            SELECT subject_id
+                            FROM weak_subjects
+                            WHERE student_id = %s AND subject_name = %s
+                        """, [student_id, course_name])
+                        weak_subject = cursor.fetchone()
+
+                        if not weak_subject:
+                            print(f"No matching weak subject found for student {student_id} and subject {course_name}")  # Debugging log
+                            continue
+
+                        cursor.execute("""
+                            INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                            VALUES (%s, %s, %s, NOW())
+                            ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                        """, [
+                            student_id, weak_subject[0], course[0]
+                        ])
+                        connection.commit()
+                        print(f"Inserted recommendation for course: {course[2]} into student_course_recommendations")  # Debugging log
+                    except Exception as e:
+                        print(f"Error inserting recommendation for course {course[2]}: {e}")
+            else:
+                print(f"No courses found in the database for subject: {course_name}. Fetching from API...")  # Debugging log
+                # Fetch courses from the API
+                api_courses, _ = fetch_courses_from_api(course_name)
+                print(f"API courses fetched for {course_name}: {api_courses}")  # Debugging log
+
+                for course in api_courses:
+                    try:
+                        # Insert the fetched course into the `online_courses` table
+                        cursor.execute("""
+                            INSERT INTO online_courses (platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ON DUPLICATE KEY UPDATE
+                                description = VALUES(description),
+                                last_updated = CURRENT_TIMESTAMP
+                        """, [
+                            course['platform'],
+                            course['course_title'],
+                            course['course_url'],
+                            course['description'],
+                            course_name,
+                            course.get('difficulty_level', 'N/A'),
+                            course.get('price', 0.0),
+                            course.get('is_free', True)
+                        ])
+                        connection.commit()
+                        print(f"Inserted course: {course['course_title']} into online_courses")  # Debugging log
+
+                        # Get the `online_course_id` of the newly inserted course
+                        cursor.execute("""
+                            SELECT online_course_id
+                            FROM online_courses
+                            WHERE platform = %s AND course_title = %s
+                        """, [course['platform'], course['course_title']])
+                        online_course_id = cursor.fetchone()[0]
+
+                        # Insert the recommendation into `student_course_recommendations`
+                        cursor.execute("""
+                            SELECT subject_id
+                            FROM weak_subjects
+                            WHERE student_id = %s AND subject_name = %s
+                        """, [student_id, course_name])
+                        weak_subject = cursor.fetchone()
+
+                        if not weak_subject:
+                            print(f"No matching weak subject found for student {student_id} and subject {course_name}")  # Debugging log
+                            continue
+
+                        cursor.execute("""
+                            INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                            VALUES (%s, %s, %s, NOW())
+                            ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                        """, [
+                            student_id, weak_subject[0], online_course_id
+                        ])
+                        connection.commit()
+                        print(f"Inserted recommendation for course: {course['course_title']} into student_course_recommendations")  # Debugging log
+                    except Exception as e:
+                        print(f"Error inserting course or recommendation for {course['course_title']}: {e}")
+
     except Exception as e:
-        print(f"Error recommending courses for course {course_name}: {e}")
+        print(f"Error recommending courses for subject {course_name}: {e}")
 
 def calculate_dropout_risk_for_parent(parent_id):
     """Calculate dropout risk for all children of a parent."""
@@ -683,3 +762,108 @@ def load_more_courses(request):
         })
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+def edit_profile(request):
+    """Allow students, teachers, and parents to update their profile information and change their password."""
+    if request.method == 'POST':
+        role = request.session.get('role')
+        user_id = request.session.get('user_id')
+
+        # Check if the request is for updating profile or changing password
+        if 'change_password' in request.POST:
+            current_password = request.POST.get('current_password')
+            new_password = request.POST.get('new_password')
+            confirm_password = request.POST.get('confirm_password')
+
+            if not all([current_password, new_password, confirm_password]):
+                messages.error(request, 'All password fields are required.')
+            elif new_password != confirm_password:
+                messages.error(request, 'New password and confirm password do not match.')
+            else:
+                try:
+                    with connection.cursor() as cursor:
+                        # Fetch the current password from the database
+                        if role == 'student':
+                            cursor.execute("SELECT password FROM students WHERE student_id = %s", [user_id])
+                        elif role == 'teacher':
+                            cursor.execute("SELECT password FROM teachers WHERE teacher_id = %s", [user_id])
+                        elif role == 'parent':
+                            cursor.execute("SELECT password FROM parents WHERE parent_id = %s", [user_id])
+                        current_password_db = cursor.fetchone()[0]
+
+                        if current_password != current_password_db:
+                            messages.error(request, 'Current password is incorrect.')
+                        else:
+                            # Update the password in the database
+                            if role == 'student':
+                                cursor.execute("UPDATE students SET password = %s WHERE student_id = %s", [new_password, user_id])
+                            elif role == 'teacher':
+                                cursor.execute("UPDATE teachers SET password = %s WHERE teacher_id = %s", [new_password, user_id])
+                            elif role == 'parent':
+                                cursor.execute("UPDATE parents SET password = %s WHERE parent_id = %s", [new_password, user_id])
+                            connection.commit()
+                            messages.success(request, 'Password updated successfully!')
+                except Exception as e:
+                    messages.error(request, f'Error updating password: {e}')
+        else:
+            # Handle profile update
+            name = request.POST.get('name')
+            phone = request.POST.get('phone')
+            email = request.POST.get('email')
+            address = request.POST.get('address')
+
+            try:
+                with connection.cursor() as cursor:
+                    if role == 'student':
+                        cursor.execute("""
+                            UPDATE students
+                            SET name = %s, phone = %s, email = %s, address = %s
+                            WHERE student_id = %s
+                        """, [name, phone, email, address, user_id])
+                    elif role == 'teacher':
+                        cursor.execute("""
+                            UPDATE teachers
+                            SET name = %s, phone = %s, email = %s
+                            WHERE teacher_id = %s
+                        """, [name, phone, email, user_id])
+                    elif role == 'parent':
+                        cursor.execute("""
+                            UPDATE parents
+                            SET name = %s, phone = %s, email = %s, address = %s
+                            WHERE parent_id = %s
+                        """, [name, phone, email, address, user_id])
+                    connection.commit()
+                    messages.success(request, 'Profile updated successfully!')
+            except Exception as e:
+                messages.error(request, f'Error updating profile: {e}')
+
+    # Fetch current user data to pre-fill the form
+    role = request.session.get('role')
+    user_id = request.session.get('user_id')
+    user_data = {}
+
+    try:
+        with connection.cursor() as cursor:
+            if role == 'student':
+                cursor.execute("""
+                    SELECT name, phone, email, address
+                    FROM students
+                    WHERE student_id = %s
+                """, [user_id])
+            elif role == 'teacher':
+                cursor.execute("""
+                    SELECT name, phone, email
+                    FROM teachers
+                    WHERE teacher_id = %s
+                """, [user_id])
+            elif role == 'parent':
+                cursor.execute("""
+                    SELECT name, phone, email, address
+                    FROM parents
+                    WHERE parent_id = %s
+                """, [user_id])
+            user_data = cursor.fetchone()
+    except Exception as e:
+        messages.error(request, f'Error fetching profile data: {e}')
+
+    return render(request, 'main/edit_profile.html', {'user_data': user_data})
