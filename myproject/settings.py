@@ -85,7 +85,7 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'dropout2',
+        'NAME': 'test_db',
         'USER': 'root',
         'PASSWORD': '',
         'HOST': 'localhost',
