@@ -20,6 +20,7 @@
         --accent: #a1e3f9;
         --success: #28a745;
         --danger: #dc3545;
+        --warning: #ffc107;
         --transition: all 0.3s ease;
         --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         --shadow-hover: 0 10px 15px rgba(0, 0, 0, 0.15);
@@ -71,6 +72,67 @@
         margin-left: 250px;
         padding: 20px;
         transition: var(--transition);
+      }
+
+      .card {
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow);
+        margin-bottom: 20px;
+        transition: var(--transition);
+      }
+
+      .card:hover {
+        box-shadow: var(--shadow-hover);
+      }
+
+      .card-header {
+        background-color: var(--secondary);
+        color: white;
+        border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+      }
+
+      .table th {
+        background-color: var(--secondary);
+        color: white;
+      }
+
+      .attendance-high {
+        background-color: rgba(40, 167, 69, 0.2);
+      }
+
+      .attendance-medium {
+        background-color: rgba(255, 193, 7, 0.2);
+      }
+
+      .attendance-low {
+        background-color: rgba(220, 53, 69, 0.2);
+      }
+
+      .marks-high {
+        background-color: rgba(40, 167, 69, 0.2);
+      }
+
+      .marks-medium {
+        background-color: rgba(255, 193, 7, 0.2);
+      }
+
+      .marks-low {
+        background-color: rgba(220, 53, 69, 0.2);
+      }
+      
+      .student-filter {
+        margin-bottom: 20px;
+      }
+      
+      .accordion-button:not(.collapsed) {
+        background-color: var(--secondary);
+        color: white;
+      }
+      
+      .risk-badge-container {
+        position: absolute;
+        right: 60px;
+        top: 15px;
       }
     </style>
   </head>
@@ -134,11 +196,307 @@
 
     <!-- Main Content -->
     <div class="main-content">
-      <h1>Welcome, {{ name }}</h1>
-      <p>Department: {{ department }}</p>
-      <p>Date of Joining: {{ date_of_joining }}</p>
+      <div class="container-fluid">
+        <div class="row mb-4">
+          <div class="col-md-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="m-0">Teacher Profile</h3>
+              </div>
+              <div class="card-body">
+                <h4>Welcome, {{ name }}</h4>
+                <p><strong>Department:</strong> {{ department }}</p>
+                <p><strong>Date of Joining:</strong> {{ date_of_joining }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row mb-4">
+          <div class="col-md-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="m-0">Department Students</h3>
+              </div>
+              <div class="card-body">
+                <!-- Search and Filter -->
+                <div class="student-filter mb-4">
+                  <div class="row">
+                    <div class="col-md-4">
+                      <input type="text" id="studentSearch" class="form-control" placeholder="Search student...">
+                    </div>
+                    <div class="col-md-3">
+                      <select id="semesterFilter" class="form-select">
+                        <option value="all">All Semesters</option>
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                        <option value="3">Semester 3</option>
+                        <option value="4">Semester 4</option>
+                        <option value="5">Semester 5</option>
+                        <option value="6">Semester 6</option>
+                        <option value="7">Semester 7</option>
+                        <option value="8">Semester 8</option>
+                      </select>
+                    </div>
+                    <div class="col-md-3">
+                      <select id="riskFilter" class="form-select">
+                        <option value="all">All Risk Levels</option>
+                        <option value="High">High Risk</option>
+                        <option value="Medium">Medium Risk</option>
+                        <option value="Low">Low Risk</option>
+                      </select>
+                    </div>
+                    <div class="col-md-2">
+                      <button id="resetFilters" class="btn btn-secondary w-100">Reset</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Student List with Accordion -->
+                <div class="accordion" id="studentsAccordion">
+                  {% if students_data %}
+                    {% for student in students_data %}
+                      <div class="accordion-item student-item" 
+                           data-name="{{ student.name|lower }}" 
+                           data-semester="{{ student.current_semester }}"
+                           data-risk="{% if student.dropout_risk %}{{ student.dropout_risk.risk_level }}{% else %}None{% endif %}">
+                        <h2 class="accordion-header" id="heading{{ forloop.counter }}">
+                          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ forloop.counter }}" aria-expanded="false" aria-controls="collapse{{ forloop.counter }}">
+                            <div class="d-flex justify-content-between w-100 align-items-center">
+                              <div>
+                                <strong>{{ student.name }}</strong> 
+                                <span class="ms-2 badge bg-info">Semester {{ student.current_semester }}</span>
+                                <span class="ms-2 badge bg-secondary">{{ student.batch_year }}</span>
+                              </div>
+                              {% if student.dropout_risk %}
+                                <div class="risk-badge-container">
+                                  <span class="badge 
+                                    {% if student.dropout_risk.risk_level == 'High' %}bg-danger
+                                    {% elif student.dropout_risk.risk_level == 'Medium' %}bg-warning
+                                    {% else %}bg-success{% endif %}">
+                                    Dropout Risk: {{ student.dropout_risk.risk_level }}
+                                  </span>
+                                </div>
+                              {% endif %}
+                            </div>
+                          </button>
+                        </h2>
+                        <div id="collapse{{ forloop.counter }}" class="accordion-collapse collapse" aria-labelledby="heading{{ forloop.counter }}" data-bs-parent="#studentsAccordion">
+                          <div class="accordion-body">
+                            <div class="row">
+                              <div class="col-md-12">
+                                <div class="card mb-3">
+                                  <div class="card-header bg-info text-white">
+                                    <h5 class="m-0">Student Details</h5>
+                                  </div>
+                                  <div class="card-body">
+                                    <div class="row">
+                                      <div class="col-md-6">
+                                        <p><strong>Name:</strong> {{ student.name }}</p>
+                                        <p><strong>Branch:</strong> {{ student.branch }}</p>
+                                      </div>
+                                      <div class="col-md-6">
+                                        <p><strong>Current Semester:</strong> {{ student.current_semester }}</p>
+                                        <p><strong>Batch Year:</strong> {{ student.batch_year }}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- Dropout Risk Section -->
+                            {% if student.dropout_risk %}
+                            <div class="row mb-3">
+                              <div class="col-md-12">
+                                <div class="card">
+                                  <div class="card-header bg-danger text-white">
+                                    <h5 class="m-0">Dropout Risk Assessment</h5>
+                                  </div>
+                                  <div class="card-body">
+                                    <div class="progress mb-3" style="height: 25px">
+                                      <div
+                                        class="progress-bar {% if student.dropout_risk.risk_level == 'High' %}bg-danger{% elif student.dropout_risk.risk_level == 'Medium' %}bg-warning{% else %}bg-success{% endif %}"
+                                        role="progressbar"
+                                        style="width: {{ student.dropout_risk.risk_score }}%;"
+                                        aria-valuenow="{{ student.dropout_risk.risk_score }}"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                      >
+                                        {{ student.dropout_risk.risk_level }} ({{ student.dropout_risk.risk_score }}%)
+                                      </div>
+                                    </div>
+                                    <p><strong>Confidence Score:</strong> {{ student.dropout_risk.confidence_score }}%</p>
+                                    <p><strong>Contributing Factors:</strong> {{ student.dropout_risk.contributing_factors }}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Academic Records Section -->
+                            <div class="row mb-3">
+                              <div class="col-md-12">
+                                <div class="card">
+                                  <div class="card-header bg-primary text-white">
+                                    <h5 class="m-0">Academic Performance</h5>
+                                  </div>
+                                  <div class="card-body">
+                                    {% if student.academic_records %}
+                                    <div class="table-responsive">
+                                      <table class="table table-bordered table-hover">
+                                        <thead class="table-primary">
+                                          <tr>
+                                            <th>Course</th>
+                                            <th>Marks</th>
+                                            <th>Semester</th>
+                                            <th>Status</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {% for record in student.academic_records %}
+                                          <tr class="{% if record.1 >= 75 %}marks-high{% elif record.1 >= 60 %}marks-medium{% else %}marks-low{% endif %}">
+                                            <td>{{ record.0 }}</td>
+                                            <td>{{ record.1 }}</td>
+                                            <td>{{ record.2 }}</td>
+                                            <td>
+                                              {% if record.1 >= 75 %}
+                                                <span class="badge bg-success">Excellent</span>
+                                              {% elif record.1 >= 60 %}
+                                                <span class="badge bg-warning text-dark">Good</span>
+                                              {% else %}
+                                                <span class="badge bg-danger">Needs Improvement</span>
+                                              {% endif %}
+                                            </td>
+                                          </tr>
+                                          {% endfor %}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    {% else %}
+                                    <p class="text-muted">No academic records available for this student.</p>
+                                    {% endif %}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Attendance Records Section -->
+                            <div class="row">
+                              <div class="col-md-12">
+                                <div class="card">
+                                  <div class="card-header bg-success text-white">
+                                    <h5 class="m-0">Attendance Records</h5>
+                                  </div>
+                                  <div class="card-body">
+                                    {% if student.attendance_records %}
+                                    <div class="table-responsive">
+                                      <table class="table table-bordered table-hover">
+                                        <thead class="table-success">
+                                          <tr>
+                                            <th>Course</th>
+                                            <th>Attendance (%)</th>
+                                            <th>Semester</th>
+                                            <th>Status</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {% for record in student.attendance_records %}
+                                          <tr class="{% if record.1 >= 85 %}attendance-high{% elif record.1 >= 75 %}attendance-medium{% else %}attendance-low{% endif %}">
+                                            <td>{{ record.0 }}</td>
+                                            <td>{{ record.1 }}%</td>
+                                            <td>{{ record.2 }}</td>
+                                            <td>
+                                              {% if record.1 >= 85 %}
+                                                <span class="badge bg-success">Good</span>
+                                              {% elif record.1 >= 75 %}
+                                                <span class="badge bg-warning text-dark">Average</span>
+                                              {% else %}
+                                                <span class="badge bg-danger">Poor</span>
+                                              {% endif %}
+                                            </td>
+                                          </tr>
+                                          {% endfor %}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    {% else %}
+                                    <p class="text-muted">No attendance records available for this student.</p>
+                                    {% endif %}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <div class="alert alert-info">
+                      <i class="fas fa-info-circle me-2"></i>
+                      No students found in your department.
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Search and Filtering Functionality -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const studentSearch = document.getElementById('studentSearch');
+        const semesterFilter = document.getElementById('semesterFilter');
+        const riskFilter = document.getElementById('riskFilter');
+        const resetFilters = document.getElementById('resetFilters');
+        const studentItems = document.querySelectorAll('.student-item');
+        
+        // Search function
+        const filterStudents = () => {
+          const searchTerm = studentSearch.value.toLowerCase();
+          const semesterValue = semesterFilter.value;
+          const riskValue = riskFilter.value;
+          
+          studentItems.forEach(item => {
+            const studentName = item.getAttribute('data-name');
+            const studentSemester = item.getAttribute('data-semester');
+            const studentRisk = item.getAttribute('data-risk');
+            
+            // Check if student matches all filters
+            const matchesSearch = studentName.includes(searchTerm);
+            const matchesSemester = semesterValue === 'all' || studentSemester === semesterValue;
+            const matchesRisk = riskValue === 'all' || studentRisk === riskValue;
+            
+            // Show or hide based on filter matches
+            if (matchesSearch && matchesSemester && matchesRisk) {
+              item.style.display = '';
+            } else {
+              item.style.display = 'none';
+            }
+          });
+        };
+        
+        // Event listeners for filters
+        studentSearch.addEventListener('input', filterStudents);
+        semesterFilter.addEventListener('change', filterStudents);
+        riskFilter.addEventListener('change', filterStudents);
+        
+        // Reset filters
+        resetFilters.addEventListener('click', () => {
+          studentSearch.value = '';
+          semesterFilter.value = 'all';
+          riskFilter.value = 'all';
+          
+          studentItems.forEach(item => {
+            item.style.display = '';
+          });
+        });
+      });
+    </script>
   </body>
 </html>

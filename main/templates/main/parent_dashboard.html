@@ -20,6 +20,7 @@
         --accent: #a1e3f9;
         --success: #28a745;
         --danger: #dc3545;
+        --warning: #ffc107; 
         --transition: all 0.3s ease;
         --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         --shadow-hover: 0 10px 15px rgba(0, 0, 0, 0.15);
@@ -71,6 +72,52 @@
         margin-left: 250px;
         padding: 20px;
         transition: var(--transition);
+      }
+
+      .card {
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow);
+        margin-bottom: 20px;
+        transition: var(--transition);
+      }
+
+      .card:hover {
+        box-shadow: var(--shadow-hover);
+      }
+
+      .card-header {
+        background-color: var(--secondary);
+        color: white;
+        border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+      }
+
+      .table th {
+        background-color: var(--secondary);
+        color: white;
+      }
+
+      .attendance-high {
+        background-color: rgba(40, 167, 69, 0.2);
+      }
+
+      .attendance-medium {
+        background-color: rgba(255, 193, 7, 0.2);
+      }
+
+      .attendance-low {
+        background-color: rgba(220, 53, 69, 0.2);
+      }
+
+      .marks-high {
+        background-color: rgba(40, 167, 69, 0.2);
+      }
+
+      .marks-medium {
+        background-color: rgba(255, 193, 7, 0.2);
+      }
+
+      .marks-low {
+        background-color: rgba(220, 53, 69, 0.2);
       }
     </style>
   </head>
@@ -138,47 +185,126 @@
       <p>Relation to Student: {{ relation_to_student }}</p>
       <p>Address: {{ address }}</p>
 
-      <h2>Children's Dropout Risks</h2>
-      {% if child_dropout_risks %}
-      <table class="table table-bordered">
-        <thead>
-          <tr>
-            <th>Child Name</th>
-            <th>Risk Score</th>
-            <th>Risk Level</th>
-            <th>Confidence Score</th>
-            <th>Contributing Factors</th>
-            <th>Risk Indicator</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for risk in child_dropout_risks %}
-          <tr>
-            <td>{{ risk.0 }}</td>
-            <td>{{ risk.1 }}</td>
-            <td>{{ risk.2 }}</td>
-            <td>{{ risk.3 }}</td>
-            <td>{{ risk.4 }}</td>
-            <td>
-              <div class="progress" style="height: 20px">
-                <div
-                  class="progress-bar {% if risk.2 == 'High' %}bg-danger{% elif risk.2 == 'Medium' %}bg-warning{% else %}bg-success{% endif %}"
-                  role="progressbar"
-                  style="width: {{ risk.1 }}%;"
-                  aria-valuenow="{{ risk.1 }}"
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                >
-                  {{ risk.2 }}
+      {% if children_data %}
+        {% for child in children_data %}
+          <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h3>{{ child.name }}</h3>
+              {% if child.dropout_risk %}
+                <span class="badge {% if child.dropout_risk.risk_level == 'High' %}bg-danger{% elif child.dropout_risk.risk_level == 'Medium' %}bg-warning{% else %}bg-success{% endif %} fs-6">
+                  Dropout Risk: {{ child.dropout_risk.risk_level }}
+                </span>
+              {% endif %}
+            </div>
+            <div class="card-body">
+              
+              <!-- Dropout Risk Section -->
+              {% if child.dropout_risk %}
+              <div class="mb-4">
+                <h4>Dropout Risk Assessment</h4>
+                <div class="progress mb-2" style="height: 25px">
+                  <div
+                    class="progress-bar {% if child.dropout_risk.risk_level == 'High' %}bg-danger{% elif child.dropout_risk.risk_level == 'Medium' %}bg-warning{% else %}bg-success{% endif %}"
+                    role="progressbar"
+                    style="width: {{ child.dropout_risk.risk_score }}%;"
+                    aria-valuenow="{{ child.dropout_risk.risk_score }}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                  >
+                    {{ child.dropout_risk.risk_level }} ({{ child.dropout_risk.risk_score }}%)
+                  </div>
+                </div>
+                <p><strong>Confidence Score:</strong> {{ child.dropout_risk.confidence_score }}%</p>
+                <p><strong>Contributing Factors:</strong> {{ child.dropout_risk.contributing_factors }}</p>
+              </div>
+              {% endif %}
+              
+              <!-- Academic Records Section -->
+              {% if child.academic_records %}
+              <div class="mb-4">
+                <h4>Academic Performance</h4>
+                <div class="table-responsive">
+                  <table class="table table-bordered table-hover">
+                    <thead class="table-primary">
+                      <tr>
+                        <th>Course</th>
+                        <th>Marks</th>
+                        <th>Semester</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for record in child.academic_records %}
+                      <tr class="{% if record.1 >= 75 %}marks-high{% elif record.1 >= 60 %}marks-medium{% else %}marks-low{% endif %}">
+                        <td>{{ record.0 }}</td>
+                        <td>{{ record.1 }}</td>
+                        <td>{{ record.2 }}</td>
+                        <td>
+                          {% if record.1 >= 75 %}
+                            <span class="badge bg-success">Excellent</span>
+                          {% elif record.1 >= 60 %}
+                            <span class="badge bg-warning text-dark">Good</span>
+                          {% else %}
+                            <span class="badge bg-danger">Needs Improvement</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              {% else %}
+              <p>No academic records available for this student.</p>
+              {% endif %}
+              
+              <!-- Attendance Records Section -->
+              {% if child.attendance_records %}
+              <div>
+                <h4>Attendance Records</h4>
+                <div class="table-responsive">
+                  <table class="table table-bordered table-hover">
+                    <thead class="table-primary">
+                      <tr>
+                        <th>Course</th>
+                        <th>Attendance (%)</th>
+                        <th>Semester</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for record in child.attendance_records %}
+                      <tr class="{% if record.1 >= 85 %}attendance-high{% elif record.1 >= 75 %}attendance-medium{% else %}attendance-low{% endif %}">
+                        <td>{{ record.0 }}</td>
+                        <td>{{ record.1 }}%</td>
+                        <td>{{ record.2 }}</td>
+                        <td>
+                          {% if record.1 >= 85 %}
+                            <span class="badge bg-success">Good</span>
+                          {% elif record.1 >= 75 %}
+                            <span class="badge bg-warning text-dark">Average</span>
+                          {% else %}
+                            <span class="badge bg-danger">Poor</span>
+                          {% endif %}
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {% else %}
+              <p>No attendance records available for this student.</p>
+              {% endif %}
+              
+            </div>
+          </div>
+        {% endfor %}
       {% else %}
-      <p>No dropout risk data available for your children.</p>
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle me-2"></i>
+          No data available for your children.
+        </div>
       {% endif %}
     </div>
 

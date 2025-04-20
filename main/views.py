@@ -571,10 +571,83 @@ def fetch_records(request):
 def teacher_dashboard(request):
     if request.session.get('role') != 'teacher':
         return redirect('login')
+
+    teacher_department = request.session.get('department')
+    students_data = []
+
+    try:
+        with connection.cursor() as cursor:
+            # Fetch all students in the teacher's department
+            cursor.execute("""
+                SELECT student_id, name, branch, current_semester, batch_year
+                FROM students
+                WHERE branch = %s
+                ORDER BY name
+            """, [teacher_department])
+            
+            students = cursor.fetchall()
+            
+            for student in students:
+                student_id, name, branch, current_semester, batch_year = student
+                student_record = {
+                    'student_id': student_id,
+                    'name': name,
+                    'branch': branch,
+                    'current_semester': current_semester,
+                    'batch_year': batch_year,
+                    'academic_records': [],
+                    'attendance_records': []
+                }
+                
+                # Fetch academic records
+                cursor.execute("""
+                    SELECT c.course_name, ar.marks, ar.semester_id
+                    FROM academic_records ar
+                    JOIN courses c ON ar.course_id = c.course_id
+                    WHERE ar.student_id = %s
+                    ORDER BY ar.semester_id DESC
+                """, [student_id])
+                student_record['academic_records'] = cursor.fetchall()
+                
+                # Fetch attendance records
+                cursor.execute("""
+                    SELECT c.course_name, ar.attendance, ar.semester_id
+                    FROM attendance_records ar
+                    JOIN courses c ON ar.course_id = c.course_id
+                    WHERE ar.student_id = %s
+                    ORDER BY ar.semester_id DESC
+                """, [student_id])
+                student_record['attendance_records'] = cursor.fetchall()
+                
+                # Fetch dropout risk
+                cursor.execute("""
+                    SELECT risk_score, risk_level, confidence_score, contributing_factors
+                    FROM dropout_risk
+                    WHERE student_id = %s
+                    ORDER BY prediction_date DESC
+                    LIMIT 1
+                """, [student_id])
+                risk_data = cursor.fetchone()
+                
+                if risk_data:
+                    student_record['dropout_risk'] = {
+                        'risk_score': risk_data[0],
+                        'risk_level': risk_data[1],
+                        'confidence_score': risk_data[2],
+                        'contributing_factors': risk_data[3]
+                    }
+                
+                students_data.append(student_record)
+                
+    except Exception as e:
+        print(f"Error fetching teacher dashboard data: {e}")
+        students_data = []
+
     return render(request, 'main/teacher_dashboard.html', {
         'name': request.session.get('name'),
         'department': request.session.get('department'),
         'date_of_joining': request.session.get('date_of_joining'),
+        'students_data': students_data,
     })
 
 def parent_dashboard(request):
@@ -583,11 +656,46 @@ def parent_dashboard(request):
 
     parent_id = request.session.get('user_id')
     child_dropout_risks = []
+    children_data = {}
 
     try:
         with connection.cursor() as cursor:
+            # Fetch children of this parent
             cursor.execute("""
-                SELECT s.name, d.risk_score, d.risk_level, d.confidence_score, d.contributing_factors
+                SELECT student_id, name
+                FROM students
+                WHERE parent_id = %s
+            """, [parent_id])
+            children = cursor.fetchall()
+            
+            for student_id, student_name in children:
+                # Store student name
+                if student_id not in children_data:
+                    children_data[student_id] = {'name': student_name, 'academic_records': [], 'attendance_records': []}
+                
+                # Fetch academic records
+                cursor.execute("""
+                    SELECT c.course_name, ar.marks, ar.semester_id
+                    FROM academic_records ar
+                    JOIN courses c ON ar.course_id = c.course_id
+                    WHERE ar.student_id = %s
+                    ORDER BY ar.semester_id DESC
+                """, [student_id])
+                children_data[student_id]['academic_records'] = cursor.fetchall()
+                
+                # Fetch attendance records
+                cursor.execute("""
+                    SELECT c.course_name, ar.attendance, ar.semester_id
+                    FROM attendance_records ar
+                    JOIN courses c ON ar.course_id = c.course_id
+                    WHERE ar.student_id = %s
+                    ORDER BY ar.semester_id DESC
+                """, [student_id])
+                children_data[student_id]['attendance_records'] = cursor.fetchall()
+            
+            # Fetch dropout risks (as you already have)
+            cursor.execute("""
+                SELECT s.student_id, s.name, d.risk_score, d.risk_level, d.confidence_score, d.contributing_factors
                 FROM students s
                 JOIN (
                     SELECT student_id, MAX(prediction_date) AS latest_date
@@ -597,15 +705,32 @@ def parent_dashboard(request):
                 JOIN dropout_risk d ON s.student_id = d.student_id AND d.prediction_date = latest_risk.latest_date
                 WHERE s.parent_id = %s
             """, [parent_id])
-            child_dropout_risks = cursor.fetchall()
+            
+            risk_data = cursor.fetchall()
+            for student_id, name, risk_score, risk_level, confidence_score, contributing_factors in risk_data:
+                if student_id in children_data:
+                    children_data[student_id]['dropout_risk'] = {
+                        'risk_score': risk_score, 
+                        'risk_level': risk_level,
+                        'confidence_score': confidence_score,
+                        'contributing_factors': contributing_factors
+                    }
+                
+            # Convert dictionary to list for template rendering
+            children_list = []
+            for student_id, data in children_data.items():
+                data['student_id'] = student_id
+                children_list.append(data)
+            
     except Exception as e:
-        child_dropout_risks = []
+        print(f"Error fetching parent dashboard data: {e}")
+        children_list = []
 
     return render(request, 'main/parent_dashboard.html', {
         'name': request.session.get('name'),
         'relation_to_student': request.session.get('relation_to_student'),
         'address': request.session.get('address'),
-        'child_dropout_risks': child_dropout_risks,
+        'children_data': children_list,
     })
 
 @csrf_exempt
