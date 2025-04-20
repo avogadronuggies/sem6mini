@@ -164,7 +164,7 @@ def logout(request):
     auth_logout(request)
     return redirect('login')
 
-def fetch_courses_from_api(course_name, page_token=None):
+def fetch_courses_from_api(course_name, student_id, page_token=None):
     """Fetch playlists from YouTube API and courses from Coursera API with caching."""
     # Sanitize the cache key to avoid invalid characters
     raw_cache_key = f"courses_{course_name}_{page_token}"
@@ -202,14 +202,45 @@ def fetch_courses_from_api(course_name, page_token=None):
         if response.status_code == 200:
             playlists = response.json().get("items", [])
             for playlist in playlists:
-                courses.append({
+                course = {
                     'platform': 'YouTube',
                     'course_title': playlist['snippet']['title'],
                     'course_url': f"https://www.youtube.com/playlist?list={playlist['id']['playlistId']}",
                     'description': playlist['snippet']['description'],
                     'difficulty_level': 'N/A',
-                })
-            next_page_token = response.json().get("nextPageToken")
+                }
+                courses.append(course)
+
+                # Insert into `online_courses` table
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO online_courses (platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            description = VALUES(description),
+                            last_updated = CURRENT_TIMESTAMP
+                    """, [
+                        course['platform'],
+                        course['course_title'],
+                        course['course_url'],
+                        course['description'],
+                        course_name,
+                        course['difficulty_level'],
+                        0.0,  # Default price
+                        True  # Default is_free
+                    ])
+                    connection.commit()
+
+                    # Insert into `student_course_recommendations` table
+                    cursor.execute("""
+                        INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                        SELECT %s, ws.subject_id, oc.online_course_id, NOW()
+                        FROM online_courses oc
+                        JOIN weak_subjects ws ON ws.subject_name = %s
+                        WHERE oc.course_title = %s
+                        ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                    """, [student_id, course_name, course['course_title']])
+                    connection.commit()
         elif response.status_code == 403 and "quotaExceeded" in response.text:
             print("YouTube API quota exceeded. Please wait until the quota resets or use a different API key.")
         else:
@@ -228,13 +259,45 @@ def fetch_courses_from_api(course_name, page_token=None):
         if response.status_code == 200:
             coursera_courses = response.json().get("elements", [])[:4]  # Limit to 4 results
             for course in coursera_courses:
-                courses.append({
+                course_data = {
                     'platform': 'Coursera',
                     'course_title': course.get('name'),
                     'course_url': f"https://www.coursera.org/learn/{course.get('slug')}",
                     'description': course.get('description', ''),
                     'difficulty_level': 'N/A',
-                })
+                }
+                courses.append(course_data)
+
+                # Insert into `online_courses` table
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO online_courses (platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            description = VALUES(description),
+                            last_updated = CURRENT_TIMESTAMP
+                    """, [
+                        course_data['platform'],
+                        course_data['course_title'],
+                        course_data['course_url'],
+                        course_data['description'],
+                        course_name,
+                        course_data['difficulty_level'],
+                        0.0,  # Default price
+                        True  # Default is_free
+                    ])
+                    connection.commit()
+
+                    # Insert into `student_course_recommendations` table
+                    cursor.execute("""
+                        INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                        SELECT %s, ws.subject_id, oc.online_course_id, NOW()
+                        FROM online_courses oc
+                        JOIN weak_subjects ws ON ws.subject_name = %s
+                        WHERE oc.course_title = %s
+                        ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                    """, [student_id, course_name, course_data['course_title']])
+                    connection.commit()
         else:
             print(f"Error fetching courses from Coursera: {response.status_code} - {response.text}")
     except Exception as e:
@@ -269,80 +332,80 @@ def recommend_courses(student_id):
             # For each weak course, fetch and store recommendations
             for weak_course in weak_courses:
                 weak_subject_id, course_name = weak_course
-                print(f"Fetching API courses for weak course: {course_name}")  # Debugging log
+                print(f"Fetching courses for weak course: {course_name}")  # Debugging log
 
-                # Fetch courses and videos from external APIs
-                api_courses, _ = fetch_courses_from_api(course_name)
-                print(f"API courses for {course_name}: {api_courses}")  # Debugging log
-
-                if not api_courses:
-                    print(f"No API courses found for {course_name}")  # Debugging log
-                    continue
-
-                # Insert API data into the `online_courses` table
-                for course in api_courses:
-                    try:
-                        cursor.execute("""
-                            INSERT INTO online_courses (platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                            ON DUPLICATE KEY UPDATE
-                                description = VALUES(description),
-                                last_updated = CURRENT_TIMESTAMP
-                        """, [
-                            course['platform'],
-                            course['course_title'],
-                            course['course_url'],
-                            course['description'],
-                            course_name,  # Use the weak course name as the subject category
-                            course.get('difficulty_level', 'N/A'),
-                            course.get('price', 0.0),
-                            course.get('is_free', True)
-                        ])
-                        connection.commit()
-                        print(f"Inserted course: {course['course_title']} into online_courses")  # Debugging log
-                    except Exception as e:
-                        print(f"Error inserting course into online_courses: {e}")
-
-                # Insert recommendations into `student_course_recommendations` table
-                for course in api_courses:
-                    try:
-                        cursor.execute("""
-                            INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
-                            SELECT %s, %s, oc.online_course_id, NOW()
-                            FROM online_courses oc
-                            WHERE oc.course_title = %s AND oc.platform = %s
-                            ON DUPLICATE KEY UPDATE recommendation_date = NOW()
-                        """, [
-                            student_id,
-                            weak_subject_id,
-                            course['course_title'],
-                            course['platform']
-                        ])
-                        connection.commit()
-                        print(f"Inserted recommendation for course: {course['course_title']} into student_course_recommendations")  # Debugging log
-                    except Exception as e:
-                        print(f"Error inserting recommendation into student_course_recommendations: {e}")
-
-                # Fetch stored courses from the database for display
+                # Check if courses for the subject already exist in the `online_courses` table
                 cursor.execute("""
-                    SELECT platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free
+                    SELECT online_course_id, platform, course_title, course_url, description, difficulty_level
                     FROM online_courses
                     WHERE subject_category = %s
                 """, [course_name])
-                stored_courses = cursor.fetchall()
+                existing_courses = cursor.fetchall()
 
-                # Add stored courses to recommendations
-                for stored_course in stored_courses:
-                    recommendations.append({
-                        'platform': stored_course[0],
-                        'course_title': stored_course[1],
-                        'course_url': stored_course[2],
-                        'description': stored_course[3],
-                        'subject_category': stored_course[4],
-                        'difficulty_level': stored_course[5],
-                        'price': stored_course[6],
-                        'is_free': stored_course[7],
-                    })
+                if existing_courses:
+                    print(f"Found {len(existing_courses)} courses in the database for subject: {course_name}")  # Debugging log
+                    # Insert recommendations into `student_course_recommendations` table
+                    for course in existing_courses:
+                        try:
+                            cursor.execute("""
+                                INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                                VALUES (%s, %s, %s, NOW())
+                                ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                            """, [student_id, weak_subject_id, course[0]])
+                            connection.commit()
+                            print(f"Inserted recommendation for course: {course[2]} into student_course_recommendations")  # Debugging log
+                        except Exception as e:
+                            print(f"Error inserting recommendation for course {course[2]}: {e}")
+                else:
+                    print(f"No courses found in the database for subject: {course_name}. Fetching from API...")  # Debugging log
+                    # Fetch courses from the API
+                    api_courses, _ = fetch_courses_from_api(course_name, student_id)
+                    print(f"API courses fetched for {course_name}: {api_courses}")  # Debugging log
+
+                    for course in api_courses:
+                        try:
+                            # Insert the fetched course into the `online_courses` table
+                            cursor.execute("""
+                                INSERT INTO online_courses (platform, course_title, course_url, description, subject_category, difficulty_level, price, is_free)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                ON DUPLICATE KEY UPDATE
+                                    description = VALUES(description),
+                                    last_updated = CURRENT_TIMESTAMP
+                            """, [
+                                course['platform'],
+                                course['course_title'],
+                                course['course_url'],
+                                course['description'],
+                                course_name,
+                                course.get('difficulty_level', 'N/A'),
+                                course.get('price', 0.0),
+                                course.get('is_free', True)
+                            ])
+                            connection.commit()
+                            print(f"Inserted course: {course['course_title']} into online_courses")  # Debugging log
+
+                            # Get the `online_course_id` of the newly inserted course
+                            cursor.execute("""
+                                SELECT online_course_id
+                                FROM online_courses
+                                WHERE platform = %s AND course_title = %s
+                            """, [course['platform'], course['course_title']])
+                            online_course_id = cursor.fetchone()
+                            if online_course_id:
+                                online_course_id = online_course_id[0]
+
+                                # Insert the recommendation into `student_course_recommendations`
+                                cursor.execute("""
+                                    INSERT INTO student_course_recommendations (student_id, weak_subject_id, online_course_id, recommendation_date)
+                                    VALUES (%s, %s, %s, NOW())
+                                    ON DUPLICATE KEY UPDATE recommendation_date = NOW()
+                                """, [student_id, weak_subject_id, online_course_id])
+                                connection.commit()
+                                print(f"Inserted recommendation for course: {course['course_title']} into student_course_recommendations")  # Debugging log
+                            else:
+                                print(f"Failed to retrieve online_course_id for course: {course['course_title']}")
+                        except Exception as e:
+                            print(f"Error inserting course or recommendation for {course['course_title']}: {e}")
 
     except Exception as e:
         print(f"Error recommending courses for student {student_id}: {e}")
@@ -407,7 +470,7 @@ def student_dashboard(request):
             weak_subjects = [row[0] for row in cursor.fetchall()]
 
             for subject_name in weak_subjects:
-                api_courses, _ = fetch_courses_from_api(subject_name)
+                api_courses, _ = fetch_courses_from_api(subject_name, student_id)
                 course_recommendations.extend(api_courses)
                 
             # Recalculate dropout risk with updated feedback
@@ -558,74 +621,65 @@ def admin_dashboard(request):
 
         try:
             with connection.cursor() as cursor:
-                if action == 'add_student':
-                    # Add a new student
-                    name = request.POST.get('name')
+                if action == 'add_student_and_parent':
+                    # Add Parent
+                    parent_name = request.POST.get('parent_name')
+                    parent_phone = request.POST.get('parent_phone')
+                    parent_email = request.POST.get('parent_email')
+                    parent_password = request.POST.get('parent_password')
+                    parent_occupation = request.POST.get('parent_occupation')
+                    parent_address = request.POST.get('parent_address')
+                    relation_to_student = request.POST.get('relation_to_student')
+
+                    try:
+                        # Insert parent into the database
+                        cursor.execute("""
+                            INSERT INTO parents (name, phone, email, password, occupation, address, relation_to_student)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, [parent_name, parent_phone, parent_email, parent_password, parent_occupation, parent_address, relation_to_student])
+                        connection.commit()
+                        print("Parent inserted successfully.")
+                    except Exception as e:
+                        print(f"Error inserting parent: {e}")
+                        raise
+
+                    try:
+                        # Retrieve the parent_id of the newly inserted parent
+                        cursor.execute("SELECT parent_id FROM parents WHERE email = %s", [parent_email])
+                        parent_id = cursor.fetchone()
+                        if not parent_id:
+                            raise ValueError("Parent ID not found after insertion.")
+                        parent_id = parent_id[0]
+                        print(f"Retrieved parent_id: {parent_id}")
+                    except Exception as e:
+                        print(f"Error retrieving parent_id: {e}")
+                        raise
+
+                    # Add Student
+                    student_name = request.POST.get('student_name')
                     branch = request.POST.get('branch')
                     current_semester = request.POST.get('current_semester')
                     batch_year = request.POST.get('batch_year')
-                    phone = request.POST.get('phone')
-                    email = request.POST.get('email')
-                    password = request.POST.get('password')
-                    address = request.POST.get('address')
-                    parent_id = request.POST.get('parent_id')
+                    student_phone = request.POST.get('student_phone')
+                    student_email = request.POST.get('student_email')
+                    student_password = request.POST.get('student_password')
+                    student_address = request.POST.get('student_address')
 
-                    cursor.execute("""
-                        INSERT INTO students (name, branch, current_semester, batch_year, phone, email, password, address, parent_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, [name, branch, current_semester, batch_year, phone, email, password, address, parent_id])
-                    connection.commit()
-                    message = "Student added successfully!"
-
-                elif action == 'add_parent':
-                    # Add a new parent
-                    name = request.POST.get('name')
-                    phone = request.POST.get('phone')
-                    email = request.POST.get('email')
-                    password = request.POST.get('password')
-                    occupation = request.POST.get('occupation')
-                    address = request.POST.get('address')
-                    relation_to_student = request.POST.get('relation_to_student')
-
-                    cursor.execute("""
-                        INSERT INTO parents (name, phone, email, password, occupation, address, relation_to_student)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, [name, phone, email, password, occupation, address, relation_to_student])
-                    connection.commit()
-                    message = "Parent added successfully!"
-
-                elif action == 'add_teacher':
-                    # Add a new teacher
-                    name = request.POST.get('name')
-                    department_id = request.POST.get('department_id')
-                    phone = request.POST.get('phone')
-                    email = request.POST.get('email')
-                    password = request.POST.get('password')
-                    date_of_joining = request.POST.get('date_of_joining')
-
-                    cursor.execute("""
-                        INSERT INTO teachers (name, department_id, phone, email, password, date_of_joining)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, [name, department_id, phone, email, password, date_of_joining])
-                    connection.commit()
-                    message = "Teacher added successfully!"
-
-                elif action == 'add_marks':
-                    # Add marks for a student
-                    student_id = request.POST.get('student_id')
-                    semester_id = request.POST.get('semester_id')
-                    course_id = request.POST.get('course_id')
-                    marks = request.POST.get('marks')
-
-                    cursor.execute("""
-                        INSERT INTO academic_records (student_id, semester_id, course_id, marks)
-                        VALUES (%s, %s, %s, %s)
-                    """, [student_id, semester_id, course_id, marks])
-                    connection.commit()
-                    message = "Marks added successfully!"
-
+                    try:
+                        # Insert student into the database with the retrieved parent_id
+                        cursor.execute("""
+                            INSERT INTO students (name, branch, current_semester, batch_year, phone, email, password, address, parent_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, [student_name, branch, current_semester, batch_year, student_phone, student_email, student_password, student_address, parent_id])
+                        connection.commit()
+                        print("Student inserted successfully.")
+                        message = "Student and Parent added successfully!"
+                    except Exception as e:
+                        print(f"Error inserting student: {e}")
+                        raise
         except Exception as e:
             message = f"Error: {e}"
+            print(f"Error in add_student_and_parent: {e}")
 
     # Fetch data for dropdowns
     parents = []
@@ -832,6 +886,17 @@ def calculate_dropout_risk_for_student(student_id):
             ])
             connection.commit()
 
+            # Delete related rows in `study_resources` before modifying `weak_subjects`
+            cursor.execute("""
+                DELETE FROM study_resources
+                WHERE subject_id IN (
+                    SELECT subject_id
+                    FROM weak_subjects
+                    WHERE student_id = %s
+                )
+            """, [student_id])
+            connection.commit()
+
             # Update weak subjects table
             cursor.execute("DELETE FROM weak_subjects WHERE student_id = %s", [student_id])
             for subject in failed_subjects:
@@ -887,7 +952,7 @@ def recommend_courses_for_subject(student_id, course_name):
             else:
                 print(f"No courses found in the database for subject: {course_name}. Fetching from API...")  # Debugging log
                 # Fetch courses from the API
-                api_courses, _ = fetch_courses_from_api(course_name)
+                api_courses, _ = fetch_courses_from_api(course_name, student_id)
                 print(f"API courses fetched for {course_name}: {api_courses}")  # Debugging log
 
                 for course in api_courses:
@@ -972,7 +1037,7 @@ def load_more_courses(request):
         return JsonResponse({"error": "Course name is required."}, status=400)
 
     try:
-        courses, next_page_token = fetch_courses_from_api(course_name, page_token)
+        courses, next_page_token = fetch_courses_from_api(course_name, None, page_token)
         return JsonResponse({
             "courses": courses,
             "next_page_token": next_page_token
