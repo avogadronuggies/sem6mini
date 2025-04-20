@@ -12,112 +12,342 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css"
       rel="stylesheet"
     />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        --primary: #3674b5;
-        --secondary: #578fca;
-        --light: #d1f8ef;
-        --accent: #a1e3f9;
-        --success: #28a745;
-        --danger: #dc3545;
-        --warning: #ffc107; 
+        --primary: #6366f1;
+        --primary-dark: #4f46e5;
+        --secondary: #818cf8;
+        --light: #f8fafc;
+        --accent: #c4b5fd;
+        --success: #10b981;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --info: #3b82f6;
+        --dark: #1e293b;
         --transition: all 0.3s ease;
-        --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        --shadow-hover: 0 10px 15px rgba(0, 0, 0, 0.15);
-        --border-radius: 15px;
+        --shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+        --shadow-hover: 0 10px 15px rgba(0, 0, 0, 0.1);
+        --border-radius: 12px;
+        --card-border-radius: 16px;
       }
 
       body {
-        background-color: var(--light);
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        padding-top: 56px;
+        background-color: #f1f5f9;
+        font-family: 'Poppins', sans-serif;
+        padding-top: 60px;
+        color: #334155;
       }
 
+      /* Navbar Styling */
       .navbar {
         position: fixed;
         top: 0;
         width: 100%;
-        background-color: var(--primary);
-        box-shadow: var(--shadow);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         z-index: 1000;
+        height: 60px;
+        padding: 0 1.5rem;
       }
 
+      .navbar-brand {
+        font-weight: 600;
+        font-size: 1.3rem;
+        letter-spacing: 0.5px;
+      }
+
+      .navbar-dark .navbar-nav .nav-link {
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      /* Sidebar Styling */
       .sidebar {
-        background: linear-gradient(135deg, var(--accent), var(--secondary));
+        background: white;
         height: 100vh;
         box-shadow: var(--shadow);
         position: fixed;
-        top: 56px;
+        top: 60px;
         left: 0;
         z-index: 100;
         padding-top: 20px;
         transition: var(--transition);
+        width: 250px;
+        border-right: 1px solid rgba(0, 0, 0, 0.05);
       }
 
       .sidebar .nav-link {
-        color: #fff;
-        padding: 10px 15px;
-        margin: 5px 0;
-        border-radius: 5px;
+        color: #555;
+        padding: 12px 20px;
+        margin: 5px 15px;
+        border-radius: 10px;
         transition: var(--transition);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+      }
+
+      .sidebar .nav-link i {
+        margin-right: 10px;
+        font-size: 1.1rem;
       }
 
       .sidebar .nav-link:hover,
       .sidebar .nav-link.active {
-        background-color: rgba(255, 255, 255, 0.2);
+        background-color: var(--primary);
+        color: white;
         transform: translateX(5px);
       }
 
+      .sidebar .nav-link.active {
+        box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
+      }
+
+      /* Main Content Styling */
       .main-content {
         margin-left: 250px;
-        padding: 20px;
+        padding: 30px;
         transition: var(--transition);
       }
 
+      .main-content h1 {
+        font-weight: 700;
+        color: var(--dark);
+        margin-bottom: 0.5rem;
+        font-size: 2rem;
+      }
+
+      .main-content p {
+        color: #64748b;
+        margin-bottom: 0.5rem;
+        font-size: 1rem;
+      }
+
+      /* Card Styling */
       .card {
-        border-radius: var(--border-radius);
+        border: none;
+        border-radius: var(--card-border-radius);
         box-shadow: var(--shadow);
-        margin-bottom: 20px;
+        margin-bottom: 25px;
         transition: var(--transition);
+        overflow: hidden;
       }
 
       .card:hover {
         box-shadow: var(--shadow-hover);
+        transform: translateY(-3px);
       }
 
       .card-header {
-        background-color: var(--secondary);
-        color: white;
-        border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+        background-color: white;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 1.2rem 1.5rem;
+        font-weight: 600;
+        color: var(--dark);
+        border-radius: var(--card-border-radius) var(--card-border-radius) 0 0 !important;
+      }
+
+      .card-header h3 {
+        margin: 0;
+        font-weight: 600;
+        font-size: 1.5rem;
+      }
+
+      .card-body {
+        padding: 1.5rem;
+      }
+
+      .card-body h4 {
+        color: var(--dark);
+        font-weight: 600;
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      }
+
+      /* Table Styling */
+      .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
       }
 
       .table th {
-        background-color: var(--secondary);
-        color: white;
+        background-color: rgba(99, 102, 241, 0.05);
+        color: var(--dark);
+        font-weight: 600;
+        padding: 12px 15px;
+        border-top: none;
       }
 
-      .attendance-high {
-        background-color: rgba(40, 167, 69, 0.2);
+      .table td {
+        padding: 12px 15px;
+        vertical-align: middle;
       }
 
-      .attendance-medium {
-        background-color: rgba(255, 193, 7, 0.2);
+      .table-hover tbody tr:hover {
+        background-color: rgba(99, 102, 241, 0.03);
       }
 
-      .attendance-low {
-        background-color: rgba(220, 53, 69, 0.2);
+      .table-bordered th, .table-bordered td {
+        border: 1px solid rgba(0, 0, 0, 0.05);
       }
 
-      .marks-high {
-        background-color: rgba(40, 167, 69, 0.2);
+      /* Attendance and Marks Styling */
+      .attendance-high, .marks-high {
+        background-color: rgba(16, 185, 129, 0.1);
       }
 
-      .marks-medium {
-        background-color: rgba(255, 193, 7, 0.2);
+      .attendance-medium, .marks-medium {
+        background-color: rgba(245, 158, 11, 0.1);
       }
 
-      .marks-low {
-        background-color: rgba(220, 53, 69, 0.2);
+      .attendance-low, .marks-low {
+        background-color: rgba(239, 68, 68, 0.1);
+      }
+
+      /* Badge Styling */
+      .badge {
+        padding: 6px 10px;
+        font-weight: 500;
+        border-radius: 6px;
+      }
+      
+      .bg-info {
+        background-color: var(--info) !important;
+      }
+      
+      .bg-danger {
+        background-color: var(--danger) !important;
+      }
+      
+      .bg-success {
+        background-color: var(--success) !important;
+      }
+      
+      .bg-warning {
+        background-color: var(--warning) !important;
+      }
+      
+      .bg-secondary {
+        background-color: #6c757d !important;
+      }
+
+      /* Progress Bar Styling */
+      .progress {
+        background-color: rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+      }
+      
+      .progress-bar {
+        border-radius: 10px;
+        font-weight: 500;
+      }
+
+      /* Alert Styling */
+      .alert {
+        border-radius: var(--border-radius);
+        padding: 15px 20px;
+        border: none;
+        box-shadow: var(--shadow);
+      }
+
+      /* Parent Info Section */
+      .parent-info {
+        background-color: white;
+        border-radius: var(--card-border-radius);
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow);
+        border-left: 4px solid var(--primary);
+      }
+
+      /* Responsive Adjustments */
+      @media (max-width: 992px) {
+        .sidebar {
+          width: 70px;
+          padding-top: 15px;
+        }
+        
+        .sidebar .nav-link span {
+          display: none;
+        }
+        
+        .sidebar .nav-link {
+          padding: 12px;
+          margin: 5px;
+          display: flex;
+          justify-content: center;
+        }
+        
+        .sidebar .nav-link i {
+          margin-right: 0;
+          font-size: 1.3rem;
+        }
+        
+        .main-content {
+          margin-left: 70px;
+          padding: 20px;
+        }
+      }
+      
+      @media (max-width: 768px) {
+        .main-content {
+          margin-left: 0;
+          padding: 15px;
+        }
+        
+        .sidebar {
+          left: -70px;
+        }
+        
+        body {
+          padding-top: 56px;
+        }
+
+        .card-header {
+          flex-direction: column;
+          align-items: flex-start !important;
+        }
+
+        .card-header .badge {
+          margin-top: 10px;
+        }
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 10px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: #a8a8a8;
+      }
+
+      /* Table Header Colors */
+      .table-primary {
+        --bs-table-bg: rgba(99, 102, 241, 0.1);
+        --bs-table-striped-bg: rgba(99, 102, 241, 0.15);
+        --bs-table-striped-color: #212529;
+        --bs-table-active-bg: rgba(99, 102, 241, 0.2);
+        --bs-table-active-color: #212529;
+        --bs-table-hover-bg: rgba(99, 102, 241, 0.15);
+        --bs-table-hover-color: #212529;
+        color: #212529;
+        border-color: rgba(99, 102, 241, 0.2);
       }
     </style>
   </head>
@@ -126,7 +356,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark">
       <div class="container-fluid">
         <a class="navbar-brand" href="#">
-          <i class="fas fa-user me-2"></i>
+          <i class="fas fa-user-tie me-2"></i>
           Parent Dashboard
         </a>
         <button
@@ -181,15 +411,17 @@
 
     <!-- Main Content -->
     <div class="main-content">
-      <h1>Welcome, {{ name }}</h1>
-      <p>Relation to Student: {{ relation_to_student }}</p>
-      <p>Address: {{ address }}</p>
+      <div class="parent-info">
+        <h1>Welcome, {{ name }}</h1>
+        <p><i class="fas fa-user-friends me-2"></i> <strong>Relation to Student:</strong> {{ relation_to_student }}</p>
+        <p><i class="fas fa-map-marker-alt me-2"></i> <strong>Address:</strong> {{ address }}</p>
+      </div>
 
       {% if children_data %}
         {% for child in children_data %}
           <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
-              <h3>{{ child.name }}</h3>
+              <h3><i class="fas fa-user-graduate me-2"></i>{{ child.name }}</h3>
               {% if child.dropout_risk %}
                 <span class="badge {% if child.dropout_risk.risk_level == 'High' %}bg-danger{% elif child.dropout_risk.risk_level == 'Medium' %}bg-warning{% else %}bg-success{% endif %} fs-6">
                   Dropout Risk: {{ child.dropout_risk.risk_level }}
@@ -201,7 +433,7 @@
               <!-- Dropout Risk Section -->
               {% if child.dropout_risk %}
               <div class="mb-4">
-                <h4>Dropout Risk Assessment</h4>
+                <h4><i class="fas fa-exclamation-triangle me-2"></i>Dropout Risk Assessment</h4>
                 <div class="progress mb-2" style="height: 25px">
                   <div
                     class="progress-bar {% if child.dropout_risk.risk_level == 'High' %}bg-danger{% elif child.dropout_risk.risk_level == 'Medium' %}bg-warning{% else %}bg-success{% endif %}"
@@ -222,7 +454,7 @@
               <!-- Academic Records Section -->
               {% if child.academic_records %}
               <div class="mb-4">
-                <h4>Academic Performance</h4>
+                <h4><i class="fas fa-book me-2"></i>Academic Performance</h4>
                 <div class="table-responsive">
                   <table class="table table-bordered table-hover">
                     <thead class="table-primary">
@@ -255,13 +487,13 @@
                 </div>
               </div>
               {% else %}
-              <p>No academic records available for this student.</p>
+              <p class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No academic records available for this student.</p>
               {% endif %}
               
               <!-- Attendance Records Section -->
               {% if child.attendance_records %}
               <div>
-                <h4>Attendance Records</h4>
+                <h4><i class="fas fa-calendar-check me-2"></i>Attendance Records</h4>
                 <div class="table-responsive">
                   <table class="table table-bordered table-hover">
                     <thead class="table-primary">
@@ -294,7 +526,7 @@
                 </div>
               </div>
               {% else %}
-              <p>No attendance records available for this student.</p>
+              <p class="alert alert-info"><i class="fas fa-info-circle me-2"></i>No attendance records available for this student.</p>
               {% endif %}
               
             </div>
