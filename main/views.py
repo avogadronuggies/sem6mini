@@ -886,6 +886,17 @@ def calculate_dropout_risk_for_student(student_id):
             ])
             connection.commit()
 
+            # Delete related rows in `student_course_recommendations` before modifying `weak_subjects`
+            cursor.execute("""
+                DELETE FROM student_course_recommendations
+                WHERE weak_subject_id IN (
+                    SELECT subject_id
+                    FROM weak_subjects
+                    WHERE student_id = %s
+                )
+            """, [student_id])
+            connection.commit()
+
             # Delete related rows in `study_resources` before modifying `weak_subjects`
             cursor.execute("""
                 DELETE FROM study_resources
