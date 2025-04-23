@@ -20,18 +20,11 @@
       <!-- Role Selection -->
       <div class="flex justify-center mt-4 space-x-4">
         <button
-          id="teacher-btn"
-          onclick="selectRole('teacher')"
+          id="staff-btn"
+          onclick="selectRole('teacher|admin')"
           class="p-2 bg-gray-300 rounded-md hover:bg-gray-400"
         >
-          👨‍🏫 Teacher
-        </button>
-        <button
-          id="admin-btn"
-          onclick="selectRole('admin')"
-          class="p-2 bg-gray-300 rounded-md hover:bg-gray-400"
-        >
-          🛠️ Admin
+          👨‍🏫 Staff
         </button>
         <button
           id="student-btn"
@@ -95,10 +88,20 @@
         document.getElementById("role").value = role;
 
         // Reset all buttons
-        document.querySelectorAll("button").forEach((btn) => {
-          btn.classList.remove("bg-black", "text-white");
-          btn.classList.add("bg-gray-300");
-        });
+        document
+          .getElementById("staff-btn")
+          .classList.remove("bg-black", "text-white");
+        document.getElementById("staff-btn").classList.add("bg-gray-300");
+
+        document
+          .getElementById("student-btn")
+          .classList.remove("bg-black", "text-white");
+        document.getElementById("student-btn").classList.add("bg-gray-300");
+
+        document
+          .getElementById("parent-btn")
+          .classList.remove("bg-black", "text-white");
+        document.getElementById("parent-btn").classList.add("bg-gray-300");
 
         // Highlight the selected role
         document.getElementById(role + "-btn").classList.remove("bg-gray-300");

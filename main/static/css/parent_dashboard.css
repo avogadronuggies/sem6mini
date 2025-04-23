@@ -60,24 +60,6 @@ body {
     transition: var(--transition);
 }
 
-.semester-selector {
-    display: flex;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
-.semester-selector label {
-    margin-right: 10px;
-    font-weight: bold;
-}
-
-.semester-selector select {
-    padding: 5px 10px;
-    border-radius: 5px;
-    width: 100px;
-    border: 1px solid var(--secondary);
-}
-
 .table {
     background-color: #fff;
     border-radius: var(--border-radius);
@@ -95,10 +77,6 @@ body {
     text-align: center;
 }
 
-.progress-bar {
-    font-weight: bold;
-}
-
 .btn-primary {
     background-color: var(--primary);
     border-color: var(--primary);
@@ -111,53 +89,14 @@ body {
 }
 
 /* Responsive Styles */
-@media (max-width: 992px) {
+@media (max-width: 768px) {
     .sidebar {
-        width: 70px;
-        padding-top: 15px;
-    }
-
-    .sidebar .nav-link span {
         display: none;
     }
 
-    .main-content {
-        margin-left: 70px;
-        padding: 15px;
-    }
-
-    .semester-selector {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .semester-selector label {
-        margin-bottom: 10px;
-    }
-
-    .table th,
-    .table td {
-        font-size: 0.9rem;
-        padding: 8px;
-    }
-}
-
-@media (max-width: 768px) {
     .main-content {
         margin-left: 0;
         padding: 10px;
-    }
-
-    .sidebar {
-        display: none;
-    }
-
-    body {
-        padding-top: 56px;
-    }
-
-    .semester-selector {
-        width: 100%;
     }
 
     .table {

@@ -547,6 +547,16 @@
             <span>PYQs</span>
           </a>
         </li>
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            href="https://www.buddy4study.com/scholarships?filter=eyJSRUxJR0lPTiI6W10sIkdFTkRFUiI6W10sIkVEVUNBVElPTiI6WyIyMiJdLCJDT1VOVFJZIjpbXSwiQ09VUlNFIjpbXSwiU1RBVEUiOltdLCJGT1JFSUdOIjpbXSwic29ydE9yZGVyIjoiREVBRExJTkUifQ=="
+            target="_blank"
+          >
+            <i class="fas fa-hand-holding-usd"></i>
+            <span>Scholarships</span>
+          </a>
+        </li>
       </ul>
     </nav>
 
@@ -753,29 +763,7 @@
         </div>
       </div>
       
-      <h2><i class="fas fa-tasks me-2"></i>Self-Evaluation Tests</h2>
-      <div class="card">
-        <div class="card-body">
-          <div id="self-evaluation-tests-container">
-            <p>Loading self-evaluation tests...</p>
-          </div>
-        </div>
-      </div>
-
-      <h2><i class="fas fa-list-ol me-2"></i>Semesters</h2>
-      <div class="card">
-        <div class="card-body">
-          <ul class="list-group">
-            {% for semester in semesters %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              Semester {{ semester }}
-              <span class="badge bg-primary rounded-pill">{{ forloop.counter }}</span>
-            </li>
-            {% endfor %}
-          </ul>
-        </div>
-      </div>
-    </div>
+    
 
     <script>
       // Global variables for charts
